@@ -11,7 +11,7 @@ import {
   computeNextFollowup,
   isAutoFollowupTrigger,
 } from '@/lib/leadLogic';
-import { toIstDateTimeParts } from '@/lib/followup';
+import { toIstDateTimeParts, subtractMinutes } from '@/lib/followup';
 
 const SELECT_LEAD_COLUMNS = `
       l.id, l.lead_code AS "leadCode", l.name, l.mobile, l.email, l.source, l.language,
@@ -267,13 +267,21 @@ attempt1Status, attempt2Status, attempt3Status, attempt4Status, attempt5Status, 
   const pipelineStatus = computePipelineStatus(totalAttempts, qualificationStatus);
   const handoverStatus = computeHandoverStatus(qualificationStatus, assignedVhUserId, assignedCounsellorUserId);
 
-  // Auto-schedule next follow-up: only when this save just logged a "didn't
-  // connect" attempt AND there's still no Final Outcome. Otherwise, respect
-  // whatever was already there (or a manual value the agent typed in).
+  // Auto-schedule next follow-up. Priority order:
+  //   1) A meeting is on the books (Meeting Date + Time set) — remind 30 minutes before it.
+  //      Recomputed every save so rescheduling the meeting keeps the reminder in sync.
+  //   2) This save just logged a "didn't connect" attempt and there's still no Final
+  //      Outcome — schedule the next business-hours call-back.
+  //   3) Otherwise, respect whatever was already there (or a manual value typed in).
   let nextFollowupDate = ((body.nextFollowupDate !== undefined ? body.nextFollowupDate : existing.nextFollowupDate) || null) as string | null;
   let nextFollowupTime = ((body.nextFollowupTime !== undefined ? body.nextFollowupTime : existing.nextFollowupTime) || null) as string | null;
   const autoTriggered = triggerIndex !== null && isAutoFollowupTrigger(triggerStatus) && !finalOutcome;
-  if (autoTriggered) {
+  const meetingReminderActive = !!(meetingDate && meetingTime);
+  if (meetingReminderActive) {
+    const reminder = subtractMinutes(meetingDate as string, meetingTime as string, 30);
+    nextFollowupDate = reminder.date;
+    nextFollowupTime = reminder.time;
+  } else if (autoTriggered) {
     const computed = computeNextFollowup(nowUtc);
     nextFollowupDate = computed.date;
     nextFollowupTime = computed.time;

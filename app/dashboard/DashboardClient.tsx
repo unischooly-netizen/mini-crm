@@ -72,7 +72,10 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <BrandHeader subtitle={`My Leads — ${agentName}`} />
-        <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link href="/qualified-leads" style={secondaryButtonStyle}>Qualified Leads</Link>
+          <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>

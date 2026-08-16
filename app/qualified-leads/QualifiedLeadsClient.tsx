@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
+import { formatDateTime } from '@/lib/format';
+import { followupColor } from '@/app/admin/AdminClient';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
 type UserOption = { id: number; name: string; role: Role };
@@ -15,6 +17,9 @@ type QLead = {
   mobile: string;
   language: string;
   ownerName: string | null;
+  meetingDate: string | null;
+  meetingTime: string | null;
+  preferredMode: string | null;
   handoverStatus: string;
   assignedVhUserId: number | null;
   assignedVhName: string | null;
@@ -29,6 +34,8 @@ const backPathFor: Record<Role, string> = {
   sales_counsellor: '/qualified-leads',
   data_team: '/admin',
 };
+
+const ALL = 'All';
 
 export default function QualifiedLeadsClient({
   role,
@@ -45,6 +52,10 @@ export default function QualifiedLeadsClient({
   const [counsellors, setCounsellors] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [languageFilter, setLanguageFilter] = useState(ALL);
+  const [vhFilter, setVhFilter] = useState(ALL);
+  const [counsellorFilter, setCounsellorFilter] = useState(ALL);
+  const [handoverFilter, setHandoverFilter] = useState(ALL);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,15 +105,26 @@ export default function QualifiedLeadsClient({
 
   const canAssignVh = role === 'admin';
   const canAssignCounsellor = role === 'admin' || role === 'vertical_head';
+  const showVhColumn = role === 'admin' || role === 'data_team' || role === 'vertical_head';
+  const showCounsellorColumn = role === 'admin' || role === 'data_team' || role === 'vertical_head' || role === 'sales_counsellor';
+
+  const languages = Array.from(new Set(leads.map((l) => l.language).filter(Boolean)));
+  const handoverStatuses = Array.from(new Set(leads.map((l) => l.handoverStatus).filter(Boolean)));
 
   const visibleLeads = leads.filter((l) => {
     const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      l.leadCode?.toLowerCase().includes(q) ||
-      l.name?.toLowerCase().includes(q) ||
-      l.mobile?.toLowerCase().includes(q)
-    );
+    if (q) {
+      const hit =
+        l.leadCode?.toLowerCase().includes(q) ||
+        l.name?.toLowerCase().includes(q) ||
+        l.mobile?.toLowerCase().includes(q);
+      if (!hit) return false;
+    }
+    if (languageFilter !== ALL && l.language !== languageFilter) return false;
+    if (vhFilter !== ALL && String(l.assignedVhUserId) !== vhFilter) return false;
+    if (counsellorFilter !== ALL && String(l.assignedCounsellorUserId) !== counsellorFilter) return false;
+    if (handoverFilter !== ALL && l.handoverStatus !== handoverFilter) return false;
+    return true;
   });
 
   let subtitle = 'Qualified Leads';
@@ -111,18 +133,16 @@ export default function QualifiedLeadsClient({
   if (role === 'presales_agent') subtitle = 'Leads you qualified';
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: 1300, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <BrandHeader subtitle={subtitle} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
-      {(role === 'vertical_head' || role === 'sales_counsellor') && (
-        <Link href={backPathFor[role]} style={{ fontSize: 14 }}>← Back</Link>
-      )}
+      <Link href={backPathFor[role]} style={{ fontSize: 14 }}>← Back</Link>
 
       <div style={{ ...cardStyle, marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-          <h2 style={{ fontSize: 16, marginTop: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>
             {loading ? 'Loading…' : `${visibleLeads.length} of ${leads.length} qualified lead(s)`}
           </h2>
           <input
@@ -130,9 +150,33 @@ export default function QualifiedLeadsClient({
             placeholder="Search lead code, name, mobile…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ padding: '6px 8px', fontSize: 14, border: '1px solid #ccc', borderRadius: 4, width: 240 }}
+            style={{ ...inputStyle, width: 240 }}
           />
         </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)} style={inputStyle}>
+            <option value={ALL}>All languages</option>
+            {languages.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          {showVhColumn && (
+            <select value={vhFilter} onChange={(e) => setVhFilter(e.target.value)} style={inputStyle}>
+              <option value={ALL}>All Vertical Heads</option>
+              {vertHeads.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          )}
+          {showCounsellorColumn && (
+            <select value={counsellorFilter} onChange={(e) => setCounsellorFilter(e.target.value)} style={inputStyle}>
+              <option value={ALL}>All Sales Counsellors</option>
+              {counsellors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <select value={handoverFilter} onChange={(e) => setHandoverFilter(e.target.value)} style={inputStyle}>
+            <option value={ALL}>All handover statuses</option>
+            {handoverStatuses.map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
+
         {visibleLeads.length === 0 && !loading && (
           <p style={{ color: '#777' }}>Nothing here yet.</p>
         )}
@@ -140,23 +184,28 @@ export default function QualifiedLeadsClient({
           <table>
             <thead>
               <tr>
+                <th>Meeting Date &amp; Time</th><th>Mode</th>
                 <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th><th>Pre-Sales Agent</th>
                 <th>Handover Status</th>
-                {(role === 'admin' || role === 'data_team' || role === 'vertical_head') && <th>Vertical Head</th>}
-                {(role === 'admin' || role === 'data_team' || role === 'vertical_head' || role === 'sales_counsellor') && <th>Sales Counsellor</th>}
+                {showVhColumn && <th>Vertical Head</th>}
+                {showCounsellorColumn && <th>Sales Counsellor</th>}
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {visibleLeads.map((l) => (
                 <tr key={l.id}>
+                  <td style={{ color: followupColor(l.meetingDate, l.meetingTime), fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {formatDateTime(l.meetingDate, l.meetingTime) || '—'}
+                  </td>
+                  <td>{l.preferredMode || '—'}</td>
                   <td>{l.leadCode}</td>
                   <td>{l.name}</td>
                   <td>{l.mobile}</td>
                   <td>{l.language}</td>
                   <td>{l.ownerName || '—'}</td>
                   <td>{l.handoverStatus}</td>
-                  {(role === 'admin' || role === 'data_team' || role === 'vertical_head') && (
+                  {showVhColumn && (
                     <td>
                       {canAssignVh ? (
                         <select
@@ -169,7 +218,7 @@ export default function QualifiedLeadsClient({
                       ) : (l.assignedVhName || '—')}
                     </td>
                   )}
-                  {(role === 'admin' || role === 'data_team' || role === 'vertical_head' || role === 'sales_counsellor') && (
+                  {showCounsellorColumn && (
                     <td>
                       {canAssignCounsellor ? (
                         <select
@@ -198,6 +247,13 @@ const cardStyle: React.CSSProperties = {
   border: '1px solid #ddd',
   borderRadius: 6,
   padding: 16,
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  fontSize: 14,
+  border: '1px solid #ccc',
+  borderRadius: 4,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {

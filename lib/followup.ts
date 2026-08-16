@@ -76,3 +76,21 @@ export function computeNextFollowup(triggerUtc: Date): { date: string; time: str
   const mm = String(ist.getUTCMinutes()).padStart(2, '0');
   return { date: `${y}-${m}-${d}`, time: `${hh}:${mm}` };
 }
+
+/**
+ * Subtracts N minutes from a plain wall-clock date+time (no timezone
+ * conversion — both input and output are just IST-local values as typed/
+ * stored, e.g. for "30 minutes before this meeting").
+ */
+export function subtractMinutes(dateStr: string, timeStr: string, minutes: number): { date: string; time: string } {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const [hh, mm] = timeStr.split(':').map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1, hh || 0, mm || 0));
+  dt.setUTCMinutes(dt.getUTCMinutes() - minutes);
+  const ny = dt.getUTCFullYear();
+  const nm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const nd = String(dt.getUTCDate()).padStart(2, '0');
+  const nhh = String(dt.getUTCHours()).padStart(2, '0');
+  const nmm = String(dt.getUTCMinutes()).padStart(2, '0');
+  return { date: `${ny}-${nm}-${nd}`, time: `${nhh}:${nmm}` };
+}

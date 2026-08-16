@@ -286,9 +286,10 @@ export default function LeadDetailClient({
           <TimeField label="Next Follow-up Time" value={form.nextFollowupTime} onChange={(v) => set('nextFollowupTime', v)} disabled={!canEditAgentFields} />
         </div>
         <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
-          If an attempt comes back Busy / No Answer / Switched Off / No Incoming Call / Number not connecting,
-          the next follow-up is set automatically (business hours, Mon–Sat 10am–7pm) — manual values here are used
-          only when that automatic rule doesn&apos;t apply.
+          Next Follow-up sets itself automatically: once a Meeting Date &amp; Time is scheduled below, it becomes
+          30 minutes before that meeting. Otherwise, if an attempt comes back Busy / No Answer / Switched Off /
+          No Incoming Call / Number not connecting, it&apos;s set to the next business-hours slot (Mon–Sat
+          10am–7pm). Manual values here are only used when neither rule applies.
         </p>
         <TextAreaField label="Remarks" value={form.remarks} onChange={(v) => set('remarks', v)} disabled={!canEditAgentFields} />
       </div>
