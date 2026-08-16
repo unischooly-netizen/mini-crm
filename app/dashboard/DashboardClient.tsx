@@ -31,6 +31,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [search, setSearch] = useState('');
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
@@ -50,7 +51,17 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     router.refresh();
   }
 
-  const visibleLeads = statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter);
+  const bySearch = (l: Lead) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      l.leadCode?.toLowerCase().includes(q) ||
+      l.name?.toLowerCase().includes(q) ||
+      l.mobile?.toLowerCase().includes(q) ||
+      l.email?.toLowerCase().includes(q)
+    );
+  };
+  const visibleLeads = (statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter)).filter(bySearch);
 
   const counts = PIPELINE_TABS.reduce<Record<string, number>>((acc, s) => {
     acc[s] = s === 'All' ? leads.length : leads.filter((l) => l.status === s).length;
@@ -64,13 +75,20 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {PIPELINE_TABS.map((s) => (
           <FilterButton key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
             {s} ({counts[s] || 0})
           </FilterButton>
         ))}
       </div>
+      <input
+        type="text"
+        placeholder="Search by lead code, name, mobile, or email…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ padding: '8px 10px', fontSize: 14, border: '1px solid #ccc', borderRadius: 4, width: 320, marginBottom: 16, boxSizing: 'border-box' }}
+      />
 
       {loading ? (
         <p>Loading…</p>

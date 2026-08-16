@@ -39,7 +39,9 @@ type Lead = {
   preferredMode: string | null;
   handoverStatus: string;
   assignedVhUserId: number | null;
+  assignedVhName: string | null;
   assignedCounsellorUserId: number | null;
+  assignedCounsellorName: string | null;
   counsellorUpdate: string;
   updatedAt: string;
   [key: string]: unknown;
@@ -307,20 +309,28 @@ export default function LeadDetailClient({
         <h2 style={h2Style}>Handover</h2>
         <div style={gridStyle}>
           <Field label="Handover Status" value={lead.handoverStatus} />
-          <SelectUsersField
-            label="Assigned Vertical Head"
-            value={form.assignedVhUserId}
-            options={vertHeads}
-            onChange={(v) => set('assignedVhUserId', v)}
-            disabled={!canAssignVh}
-          />
-          <SelectUsersField
-            label="Assigned Sales Counsellor"
-            value={form.assignedCounsellorUserId}
-            options={counsellors}
-            onChange={(v) => set('assignedCounsellorUserId', v)}
-            disabled={!canAssignCounsellor}
-          />
+          {canAssignVh ? (
+            <SelectUsersField
+              label="Assigned Vertical Head"
+              value={form.assignedVhUserId}
+              options={vertHeads}
+              onChange={(v) => set('assignedVhUserId', v)}
+              disabled={false}
+            />
+          ) : (
+            <Field label="Assigned Vertical Head" value={lead.assignedVhName || 'Unassigned'} />
+          )}
+          {canAssignCounsellor ? (
+            <SelectUsersField
+              label="Assigned Sales Counsellor"
+              value={form.assignedCounsellorUserId}
+              options={counsellors}
+              onChange={(v) => set('assignedCounsellorUserId', v)}
+              disabled={false}
+            />
+          ) : (
+            <Field label="Assigned Sales Counsellor" value={lead.assignedCounsellorName || 'Unassigned'} />
+          )}
         </div>
         <p style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 4 }}>
           Handover Status updates itself automatically as the lead moves through Qualified → VH Assigned →

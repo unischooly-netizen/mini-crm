@@ -128,15 +128,22 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
           <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>Audit Log</TabButton>
         )}
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
-        {agents.map((a) => (
-          <TabButton
-            key={a.id}
-            active={tab === 'leads' && leadsAgentFilter === String(a.id)}
-            onClick={() => { setTab('leads'); setLeadsAgentFilter(String(a.id)); }}
+        {agents.length > 0 && (
+          <select
+            value={agents.some((a) => String(a.id) === leadsAgentFilter) ? leadsAgentFilter : ''}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              setTab('leads');
+              setLeadsAgentFilter(e.target.value);
+            }}
+            style={{ padding: '8px 10px', border: '1px solid #ccc', borderRadius: 4, background: '#fff', cursor: 'pointer' }}
           >
-            {a.name}
-          </TabButton>
-        ))}
+            <option value="">Agent Tabs ▾</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {tab === 'users' && <UsersTab users={users} onChanged={loadUsers} />}
@@ -489,6 +496,7 @@ function LeadsTab({
   setAgentFilter: (v: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [search, setSearch] = useState('');
 
   async function reassign(leadId: number, userId: number | null) {
     await fetch(`/api/leads/${leadId}`, {
@@ -503,6 +511,16 @@ function LeadsTab({
     if (agentFilter === 'Unassigned' && lead.ownerUserId !== null) return false;
     if (agentFilter !== 'All' && agentFilter !== 'Unassigned' && String(lead.ownerUserId) !== agentFilter) return false;
     if (statusFilter !== 'All' && lead.status !== statusFilter) return false;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const hit =
+        lead.leadCode?.toLowerCase().includes(q) ||
+        lead.name?.toLowerCase().includes(q) ||
+        lead.mobile?.toLowerCase().includes(q) ||
+        lead.email?.toLowerCase().includes(q) ||
+        (lead.ownerName || '').toLowerCase().includes(q);
+      if (!hit) return false;
+    }
     return true;
   });
 
@@ -516,7 +534,14 @@ function LeadsTab({
         <h2 style={{ fontSize: 16, marginTop: 0 }}>
           {agentName ? `${agentName}'s leads` : 'All leads'} {loading ? '(loading…)' : `(${visibleLeads.length} of ${leads.length})`}
         </h2>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            placeholder="Search lead code, name, mobile…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...inputStyle, width: 240 }}
+          />
           <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} style={inputStyle}>
             <option value="All">All agents</option>
             <option value="Unassigned">Unassigned</option>

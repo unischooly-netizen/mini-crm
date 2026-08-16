@@ -44,6 +44,7 @@ export default function QualifiedLeadsClient({
   const [vertHeads, setVertHeads] = useState<UserOption[]>([]);
   const [counsellors, setCounsellors] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +95,16 @@ export default function QualifiedLeadsClient({
   const canAssignVh = role === 'admin';
   const canAssignCounsellor = role === 'admin' || role === 'vertical_head';
 
+  const visibleLeads = leads.filter((l) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      l.leadCode?.toLowerCase().includes(q) ||
+      l.name?.toLowerCase().includes(q) ||
+      l.mobile?.toLowerCase().includes(q)
+    );
+  });
+
   let subtitle = 'Qualified Leads';
   if (role === 'vertical_head') subtitle = `Qualified Leads assigned to ${selfName}`;
   if (role === 'sales_counsellor') subtitle = `Qualified Leads assigned to ${selfName}`;
@@ -110,13 +121,22 @@ export default function QualifiedLeadsClient({
       )}
 
       <div style={{ ...cardStyle, marginTop: 16 }}>
-        <h2 style={{ fontSize: 16, marginTop: 0 }}>
-          {loading ? 'Loading…' : `${leads.length} qualified lead(s)`}
-        </h2>
-        {leads.length === 0 && !loading && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <h2 style={{ fontSize: 16, marginTop: 0 }}>
+            {loading ? 'Loading…' : `${visibleLeads.length} of ${leads.length} qualified lead(s)`}
+          </h2>
+          <input
+            type="text"
+            placeholder="Search lead code, name, mobile…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '6px 8px', fontSize: 14, border: '1px solid #ccc', borderRadius: 4, width: 240 }}
+          />
+        </div>
+        {visibleLeads.length === 0 && !loading && (
           <p style={{ color: '#777' }}>Nothing here yet.</p>
         )}
-        {leads.length > 0 && (
+        {visibleLeads.length > 0 && (
           <table>
             <thead>
               <tr>
@@ -128,7 +148,7 @@ export default function QualifiedLeadsClient({
               </tr>
             </thead>
             <tbody>
-              {leads.map((l) => (
+              {visibleLeads.map((l) => (
                 <tr key={l.id}>
                   <td>{l.leadCode}</td>
                   <td>{l.name}</td>

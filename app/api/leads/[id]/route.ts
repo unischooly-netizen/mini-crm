@@ -14,29 +14,38 @@ import {
 import { toIstDateTimeParts } from '@/lib/followup';
 
 const SELECT_LEAD_COLUMNS = `
-      id, lead_code AS "leadCode", name, mobile, email, source, language,
-      assigned_date AS "assignedDate", owner_user_id AS "ownerUserId", status, notes,
-      state, profession, purpose,
-      attempt1_status AS "attempt1Status", attempt1_date AS "attempt1Date", attempt1_time AS "attempt1Time",
-      attempt2_status AS "attempt2Status", attempt2_date AS "attempt2Date", attempt2_time AS "attempt2Time",
-      attempt3_status AS "attempt3Status", attempt3_date AS "attempt3Date", attempt3_time AS "attempt3Time",
-      attempt4_status AS "attempt4Status", attempt4_date AS "attempt4Date", attempt4_time AS "attempt4Time",
-      attempt5_status AS "attempt5Status", attempt5_date AS "attempt5Date", attempt5_time AS "attempt5Time",
-      attempt6_status AS "attempt6Status", attempt6_date AS "attempt6Date", attempt6_time AS "attempt6Time",
-      attempt7_status AS "attempt7Status", attempt7_date AS "attempt7Date", attempt7_time AS "attempt7Time",
-      attempt8_status AS "attempt8Status", attempt8_date AS "attempt8Date", attempt8_time AS "attempt8Time",
-      attempt9_status AS "attempt9Status", attempt9_date AS "attempt9Date", attempt9_time AS "attempt9Time",
-      total_attempts AS "totalAttempts", final_outcome AS "finalOutcome",
-      qualification_status AS "qualificationStatus",
-      next_followup_date AS "nextFollowupDate", next_followup_time AS "nextFollowupTime",
-      course_start_timeline AS "courseStartTimeline", meeting_date AS "meetingDate", meeting_time AS "meetingTime",
-      preferred_mode AS "preferredMode", handover_status AS "handoverStatus",
-      assigned_vh_user_id AS "assignedVhUserId", assigned_counsellor_user_id AS "assignedCounsellorUserId",
-      counsellor_update AS "counsellorUpdate", updated_at AS "updatedAt"
+      l.id, l.lead_code AS "leadCode", l.name, l.mobile, l.email, l.source, l.language,
+      l.assigned_date AS "assignedDate", l.owner_user_id AS "ownerUserId", l.status, l.notes,
+      l.state, l.profession, l.purpose,
+      l.attempt1_status AS "attempt1Status", l.attempt1_date AS "attempt1Date", l.attempt1_time AS "attempt1Time",
+      l.attempt2_status AS "attempt2Status", l.attempt2_date AS "attempt2Date", l.attempt2_time AS "attempt2Time",
+      l.attempt3_status AS "attempt3Status", l.attempt3_date AS "attempt3Date", l.attempt3_time AS "attempt3Time",
+      l.attempt4_status AS "attempt4Status", l.attempt4_date AS "attempt4Date", l.attempt4_time AS "attempt4Time",
+      l.attempt5_status AS "attempt5Status", l.attempt5_date AS "attempt5Date", l.attempt5_time AS "attempt5Time",
+      l.attempt6_status AS "attempt6Status", l.attempt6_date AS "attempt6Date", l.attempt6_time AS "attempt6Time",
+      l.attempt7_status AS "attempt7Status", l.attempt7_date AS "attempt7Date", l.attempt7_time AS "attempt7Time",
+      l.attempt8_status AS "attempt8Status", l.attempt8_date AS "attempt8Date", l.attempt8_time AS "attempt8Time",
+      l.attempt9_status AS "attempt9Status", l.attempt9_date AS "attempt9Date", l.attempt9_time AS "attempt9Time",
+      l.total_attempts AS "totalAttempts", l.final_outcome AS "finalOutcome",
+      l.qualification_status AS "qualificationStatus",
+      l.next_followup_date AS "nextFollowupDate", l.next_followup_time AS "nextFollowupTime",
+      l.course_start_timeline AS "courseStartTimeline", l.meeting_date AS "meetingDate", l.meeting_time AS "meetingTime",
+      l.preferred_mode AS "preferredMode", l.handover_status AS "handoverStatus",
+      l.assigned_vh_user_id AS "assignedVhUserId", vh.name AS "assignedVhName",
+      l.assigned_counsellor_user_id AS "assignedCounsellorUserId", counsellor.name AS "assignedCounsellorName",
+      l.counsellor_update AS "counsellorUpdate", l.updated_at AS "updatedAt"
 `;
 
 async function fetchLead(leadId: number) {
-  const rows = await sql.query(`SELECT ${SELECT_LEAD_COLUMNS} FROM leads WHERE id = $1 LIMIT 1`, [leadId]);
+  const rows = await sql.query(
+    `SELECT ${SELECT_LEAD_COLUMNS}
+     FROM leads l
+     LEFT JOIN users vh ON vh.id = l.assigned_vh_user_id
+     LEFT JOIN users counsellor ON counsellor.id = l.assigned_counsellor_user_id
+     WHERE l.id = $1
+     LIMIT 1`,
+    [leadId]
+  );
   return (rows as Record<string, unknown>[])[0] || null;
 }
 
