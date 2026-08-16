@@ -1,0 +1,114 @@
+import { cookies } from 'next/headers';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+
+export type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
+
+export const ROLES: Role[] = ['admin', 'presales_agent', 'vertical_head', 'sales_counsellor', 'data_team'];
+
+export const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Admin',
+  presales_agent: 'Pre-Sales Agent',
+  vertical_head: 'Vertical Head',
+  sales_counsellor: 'Sales Counsellor',
+  data_team: 'Data Team',
+};
+
+export function roleHomePath(role: Role): string {
+  switch (role) {
+    case 'admin':
+      return '/admin';
+    case 'presales_agent':
+      return '/dashboard';
+    case 'data_team':
+      return '/data-upload';
+    case 'vertical_head':
+    case 'sales_counsellor':
+      return '/coming-soon';
+    default:
+      return '/login';
+  }
+}
+
+export type SessionUser = {
+  id: number;
+  name: string;
+  role: Role;
+};
+
+const COOKIE_NAME = 'mini_crm_session';
+
+function getSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    return 'dev-only-insecure-secret-change-me';
+  }
+  return secret;
+}
+
+function sign(payload: string): string {
+  return crypto.createHmac('sha256', getSecret()).update(payload).digest('hex');
+}
+
+export function hashPin(pin: string): Promise<string> {
+  return bcrypt.hash(pin, 10);
+}
+
+export function verifyPin(pin: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(pin, hash);
+}
+
+export function encodeSession(user: SessionUser): string {
+  const payload = Buffer.from(JSON.stringify(user)).toString('base64url');
+  const sig = sign(payload);
+  return `${payload}.${sig}`;
+}
+
+export function decodeSession(token: string | undefined | null): SessionUser | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payload, sig] = parts;
+  const expectedSig = sign(payload);
+  if (sig.length !== expectedSig.length) return null;
+  const valid = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig));
+  if (!valid) return null;
+  try {
+    const json = Buffer.from(payload, 'base64url').toString('utf8');
+    const user = JSON.parse(json);
+    if (
+      typeof user.id === 'number' &&
+      typeof user.name === 'string' &&
+      ROLES.includes(user.role)
+    ) {
+      return user as SessionUser;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getSession(): Promise<SessionUser | null> {
+  const store = await cookies();
+  const token = store.get(COOKIE_NAME)?.value;
+  return decodeSession(token);
+}
+
+export async function setSessionCookie(user: SessionUser) {
+  const store = await cookies();
+  store.set(COOKIE_NAME, encodeSession(user), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+export async function clearSessionCookie() {
+  const store = await cookies();
+  store.delete(COOKIE_NAME);
+}
+
+export const SESSION_COOKIE_NAME = COOKIE_NAME;
