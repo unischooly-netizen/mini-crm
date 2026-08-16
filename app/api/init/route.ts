@@ -53,6 +53,60 @@ export async function GET(request: NextRequest) {
   await sql`CREATE INDEX IF NOT EXISTS idx_leads_lang_date ON leads(language, assigned_date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_leads_mobile ON leads(mobile)`;
 
+  // --- Stage 2 columns: attempt tracking, qualification, handover chain ---
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS state TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS profession TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS purpose TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt1_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt1_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt1_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt2_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt2_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt2_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt3_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt3_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt3_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt4_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt4_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt4_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt5_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt5_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt5_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt6_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt6_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt6_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt7_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt7_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt7_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt8_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt8_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt8_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt9_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt9_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS attempt9_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS total_attempts INTEGER NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS final_outcome TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualification_status TEXT NOT NULL DEFAULT 'Not Reviewed'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_followup_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_followup_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS course_start_timeline TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS preferred_mode TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS handover_status TEXT NOT NULL DEFAULT 'Not Ready'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_vh_user_id INTEGER REFERENCES users(id)`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_counsellor_user_id INTEGER REFERENCES users(id)`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS counsellor_update TEXT NOT NULL DEFAULT ''`;
+
+  // Widen the status check constraint to the new pipeline status values.
+  await sql`ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check`;
+  await sql`ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN ('New','Not Picked','Follow-up Needed','Qualified','Not Qualified'))`;
+
+  await sql`CREATE INDEX IF NOT EXISTS idx_leads_qualification ON leads(qualification_status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_leads_next_followup ON leads(next_followup_date, next_followup_time)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_leads_assigned_vh ON leads(assigned_vh_user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_leads_assigned_counsellor ON leads(assigned_counsellor_user_id)`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS allocation_rules (
       id SERIAL PRIMARY KEY,

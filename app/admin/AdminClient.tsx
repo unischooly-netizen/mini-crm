@@ -1,7 +1,8 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
+import Link from 'next/link';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -41,6 +42,10 @@ type Lead = {
   ownerName: string | null;
   status: string;
   notes: string;
+  qualificationStatus?: string;
+  nextFollowupDate?: string | null;
+  nextFollowupTime?: string | null;
+  handoverStatus?: string;
   createdAt: string;
 };
 
@@ -56,9 +61,10 @@ type AuditEntry = {
 
 type Tab = 'leads' | 'upload' | 'rules' | 'users' | 'audit';
 
-export default function AdminClient({ adminName }: { adminName: string }) {
+export default function AdminClient({ adminName, role }: { adminName: string; role: Role }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('leads');
+  const [leadsAgentFilter, setLeadsAgentFilter] = useState<string>('All');
   const [users, setUsers] = useState<User[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -114,18 +120,37 @@ export default function AdminClient({ adminName }: { adminName: string }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        <TabButton active={tab === 'leads'} onClick={() => setTab('leads')}>All Leads</TabButton>
+        <TabButton active={tab === 'leads' && leadsAgentFilter === 'All'} onClick={() => { setTab('leads'); setLeadsAgentFilter('All'); }}>All Leads</TabButton>
         <TabButton active={tab === 'upload'} onClick={() => setTab('upload')}>Upload Leads</TabButton>
         <TabButton active={tab === 'rules'} onClick={() => setTab('rules')}>Allocation Rules</TabButton>
         <TabButton active={tab === 'users'} onClick={() => setTab('users')}>Users</TabButton>
-        <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>Audit Log</TabButton>
+        {role === 'admin' && (
+          <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>Audit Log</TabButton>
+        )}
+        <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
+        {agents.map((a) => (
+          <TabButton
+            key={a.id}
+            active={tab === 'leads' && leadsAgentFilter === String(a.id)}
+            onClick={() => { setTab('leads'); setLeadsAgentFilter(String(a.id)); }}
+          >
+            {a.name}
+          </TabButton>
+        ))}
       </div>
 
       {tab === 'users' && <UsersTab users={users} onChanged={loadUsers} />}
       {tab === 'rules' && <RulesTab rules={rules} agents={agents} onChanged={() => { loadRules(); loadLeads(); }} />}
       {tab === 'upload' && <UploadTab onUploaded={() => { loadLeads(); loadAudit(); }} />}
       {tab === 'leads' && (
-        <LeadsTab leads={leads} agents={agents} loading={loading} onChanged={loadLeads} />
+        <LeadsTab
+          leads={leads}
+          agents={agents}
+          loading={loading}
+          onChanged={loadLeads}
+          agentFilter={leadsAgentFilter}
+          setAgentFilter={setLeadsAgentFilter}
+        />
       )}
       {tab === 'audit' && <AuditTab entries={audit} onRefresh={loadAudit} />}
     </div>
@@ -453,13 +478,16 @@ function LeadsTab({
   agents,
   loading,
   onChanged,
+  agentFilter,
+  setAgentFilter,
 }: {
   leads: Lead[];
   agents: User[];
   loading: boolean;
   onChanged: () => void;
+  agentFilter: string;
+  setAgentFilter: (v: string) => void;
 }) {
-  const [agentFilter, setAgentFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
 
   async function reassign(leadId: number, userId: number | null) {
@@ -478,11 +506,15 @@ function LeadsTab({
     return true;
   });
 
+  const agentName = agentFilter !== 'All' && agentFilter !== 'Unassigned'
+    ? agents.find((a) => String(a.id) === agentFilter)?.name
+    : null;
+
   return (
     <div style={cardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>
-          All leads {loading ? '(loading…)' : `(${visibleLeads.length} of ${leads.length})`}
+          {agentName ? `${agentName}'s leads` : 'All leads'} {loading ? '(loading…)' : `(${visibleLeads.length} of ${leads.length})`}
         </h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} style={inputStyle}>
@@ -495,7 +527,8 @@ function LeadsTab({
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={inputStyle}>
             <option value="All">All statuses</option>
             <option value="New">New</option>
-            <option value="Called">Called</option>
+            <option value="Not Picked">Not Picked</option>
+            <option value="Follow-up Needed">Follow-up Needed</option>
             <option value="Qualified">Qualified</option>
             <option value="Not Qualified">Not Qualified</option>
           </select>
@@ -504,8 +537,9 @@ function LeadsTab({
       <table>
         <thead>
           <tr>
-            <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Email</th><th>Source</th>
-            <th>Language</th><th>Assigned Date</th><th>Owner</th><th>Status</th><th>Notes</th>
+            <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Source</th>
+            <th>Language</th><th>Assigned Date</th><th>Owner</th><th>Status</th>
+            <th>Next Follow-up</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -514,7 +548,6 @@ function LeadsTab({
               <td>{lead.leadCode}</td>
               <td>{lead.name}</td>
               <td>{lead.mobile}</td>
-              <td>{lead.email}</td>
               <td>{lead.source}</td>
               <td>{lead.language}</td>
               <td>{formatDate(lead.assignedDate)}</td>
@@ -529,14 +562,47 @@ function LeadsTab({
                   ))}
                 </select>
               </td>
-              <td>{lead.status}</td>
-              <td>{lead.notes}</td>
+              <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
+              <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
+                {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
+              </td>
+              <td><Link href={`/leads/${lead.id}`}>View</Link></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+export function StatusBadge({ status }: { status: string }) {
+  const colors: Record<string, { bg: string; fg: string }> = {
+    'Qualified': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Not Qualified': { bg: '#fdeaea', fg: '#b3261e' },
+    'Follow-up Needed': { bg: '#fff4e0', fg: '#a15c00' },
+    'Not Picked': { bg: '#eef1f4', fg: '#555' },
+    'New': { bg: '#eaf1fd', fg: '#1a56c4' },
+    'Not Reviewed': { bg: '#eef1f4', fg: '#555' },
+  };
+  const c = colors[status] || { bg: '#eee', fg: '#333' };
+  return (
+    <span style={{ background: c.bg, color: c.fg, padding: '2px 8px', borderRadius: 12, fontSize: 12, whiteSpace: 'nowrap' }}>
+      {status}
+    </span>
+  );
+}
+
+/** Red if overdue, orange if due today, green if upcoming, grey if not set. */
+export function followupColor(date: string | null | undefined, time: string | null | undefined): string {
+  if (!date) return '#999';
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const target = new Date(`${date.slice(0, 10)}T${time || '00:00'}:00`);
+  if (date.slice(0, 10) < todayStr) return '#b3261e';
+  if (date.slice(0, 10) === todayStr) {
+    return target.getTime() < now.getTime() ? '#b3261e' : '#a15c00';
+  }
+  return '#0a7a2f';
 }
 
 function AuditTab({ entries, onRefresh }: { entries: AuditEntry[]; onRefresh: () => void }) {

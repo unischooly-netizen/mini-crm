@@ -1,6 +1,9 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
+import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
+import { formatDateTime } from '@/lib/format';
+import Link from 'next/link';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -15,10 +18,13 @@ type Lead = {
   language: string;
   assignedDate: string;
   status: string;
+  qualificationStatus?: string;
+  nextFollowupDate?: string | null;
+  nextFollowupTime?: string | null;
   notes: string;
 };
 
-const STATUS_OPTIONS = ['New', 'Called', 'Qualified', 'Not Qualified'];
+const PIPELINE_TABS = ['All', 'New', 'Not Picked', 'Follow-up Needed', 'Qualified', 'Not Qualified'];
 
 export default function DashboardClient({ agentName }: { agentName: string }) {
   const router = useRouter();
@@ -44,19 +50,10 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     router.refresh();
   }
 
-  async function updateLead(id: number, changes: { status?: string; notes?: string }) {
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...changes } : l)));
-    await fetch(`/api/leads/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(changes),
-    });
-  }
-
   const visibleLeads = statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter);
 
-  const counts = STATUS_OPTIONS.reduce<Record<string, number>>((acc, s) => {
-    acc[s] = leads.filter((l) => l.status === s).length;
+  const counts = PIPELINE_TABS.reduce<Record<string, number>>((acc, s) => {
+    acc[s] = s === 'All' ? leads.length : leads.filter((l) => l.status === s).length;
     return acc;
   }, {});
 
@@ -68,10 +65,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <FilterButton active={statusFilter === 'All'} onClick={() => setStatusFilter('All')}>
-          All ({leads.length})
-        </FilterButton>
-        {STATUS_OPTIONS.map((s) => (
+        {PIPELINE_TABS.map((s) => (
           <FilterButton key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
             {s} ({counts[s] || 0})
           </FilterButton>
@@ -86,58 +80,28 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
         <table>
           <thead>
             <tr>
-              <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Email</th><th>Source</th>
-              <th>Language</th><th>Status</th><th>Notes</th>
+              <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th>
+              <th>Status</th><th>Next Follow-up</th><th></th>
             </tr>
           </thead>
           <tbody>
             {visibleLeads.map((lead) => (
-              <LeadRow key={lead.id} lead={lead} onChange={updateLead} />
+              <tr key={lead.id}>
+                <td>{lead.leadCode}</td>
+                <td>{lead.name}</td>
+                <td>{lead.mobile}</td>
+                <td>{lead.language}</td>
+                <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
+                <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
+                  {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
+                </td>
+                <td><Link href={`/leads/${lead.id}`}>Open</Link></td>
+              </tr>
             ))}
           </tbody>
         </table>
       )}
     </div>
-  );
-}
-
-function LeadRow({
-  lead,
-  onChange,
-}: {
-  lead: Lead;
-  onChange: (id: number, changes: { status?: string; notes?: string }) => void;
-}) {
-  const [notes, setNotes] = useState(lead.notes);
-
-  return (
-    <tr>
-      <td>{lead.leadCode}</td>
-      <td>{lead.name}</td>
-      <td>{lead.mobile}</td>
-      <td>{lead.email}</td>
-      <td>{lead.source}</td>
-      <td>{lead.language}</td>
-      <td>
-        <select value={lead.status} onChange={(e) => onChange(lead.id, { status: e.target.value })}>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </td>
-      <td>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ flex: 1, padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4 }}
-          />
-          <button onClick={() => onChange(lead.id, { notes })} style={{ padding: '4px 8px', cursor: 'pointer' }}>
-            Save
-          </button>
-        </div>
-      </td>
-    </tr>
   );
 }
 

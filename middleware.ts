@@ -14,7 +14,9 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/data-upload') ||
-    pathname.startsWith('/coming-soon');
+    pathname.startsWith('/coming-soon') ||
+    pathname.startsWith('/leads') ||
+    pathname.startsWith('/qualified-leads');
 
   if (isProtected && !hasSession) {
     const url = request.nextUrl.clone();
@@ -26,5 +28,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/data-upload/:path*', '/coming-soon/:path*'],
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/data-upload/:path*', '/coming-soon/:path*', '/leads/:path*', '/qualified-leads/:path*'],
 };

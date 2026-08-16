@@ -5,18 +5,29 @@ import { logAction } from '@/lib/audit';
 
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin login required.' }, { status: 403 });
+  if (!session) {
+    return NextResponse.json({ error: 'Not logged in.' }, { status: 401 });
   }
 
-  const rows = await sql`SELECT id, name, role, created_at FROM users ORDER BY role, name`;
-  return NextResponse.json({ users: rows });
+  // Admin and Data Team manage the full user list. Vertical Heads only need
+  // the Sales Counsellor list, to assign qualified leads to one of them.
+  if (session.role === 'admin' || session.role === 'data_team') {
+    const rows = await sql`SELECT id, name, role, created_at FROM users ORDER BY role, name`;
+    return NextResponse.json({ users: rows });
+  }
+
+  if (session.role === 'vertical_head') {
+    const rows = await sql`SELECT id, name, role, created_at FROM users WHERE role = 'sales_counsellor' ORDER BY name`;
+    return NextResponse.json({ users: rows });
+  }
+
+  return NextResponse.json({ error: 'Not permitted.' }, { status: 403 });
 }
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
-  if (!session || session.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin login required.' }, { status: 403 });
+  if (!session || (session.role !== 'admin' && session.role !== 'data_team')) {
+    return NextResponse.json({ error: 'Admin or Data Team login required.' }, { status: 403 });
   }
 
   const body = await request.json().catch(() => null);

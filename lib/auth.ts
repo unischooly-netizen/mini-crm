@@ -21,10 +21,10 @@ export function roleHomePath(role: Role): string {
     case 'presales_agent':
       return '/dashboard';
     case 'data_team':
-      return '/data-upload';
+      return '/admin';
     case 'vertical_head':
     case 'sales_counsellor':
-      return '/coming-soon';
+      return '/qualified-leads';
     default:
       return '/login';
   }

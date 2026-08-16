@@ -5,8 +5,8 @@ import { logAction } from '@/lib/audit';
 
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin login required.' }, { status: 403 });
+  if (!session || (session.role !== 'admin' && session.role !== 'data_team')) {
+    return NextResponse.json({ error: 'Admin or Data Team login required.' }, { status: 403 });
   }
 
   const rows = await sql`
@@ -21,8 +21,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
-  if (!session || session.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin login required.' }, { status: 403 });
+  if (!session || (session.role !== 'admin' && session.role !== 'data_team')) {
+    return NextResponse.json({ error: 'Admin or Data Team login required.' }, { status: 403 });
   }
 
   const body = await request.json().catch(() => null);
