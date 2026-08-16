@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getSession, hashPin, ROLES, type Role } from '@/lib/auth';
+import { getSession, hashPin, encryptPin, decryptPin, ROLES, type Role } from '@/lib/auth';
 import { logAction } from '@/lib/audit';
 
 export async function GET() {
@@ -12,8 +12,14 @@ export async function GET() {
   // Admin and Data Team manage the full user list. Vertical Heads only need
   // the Sales Counsellor list, to assign qualified leads to one of them.
   if (session.role === 'admin' || session.role === 'data_team') {
-    const rows = await sql`SELECT id, name, role, created_at FROM users ORDER BY role, name`;
-    return NextResponse.json({ users: rows });
+    const rows = await sql`SELECT id, name, role, created_at, pin_encrypted FROM users ORDER BY role, name`;
+    const users = (rows as { pin_encrypted: string | null; [k: string]: unknown }[]).map((u) => {
+      const { pin_encrypted, ...rest } = u;
+      // Only Admin sees PINs — Data Team uses this same endpoint just to
+      // populate name/role pickers elsewhere and doesn't need them.
+      return session.role === 'admin' ? { ...rest, pin: decryptPin(pin_encrypted) } : rest;
+    });
+    return NextResponse.json({ users });
   }
 
   if (session.role === 'vertical_head') {
@@ -48,9 +54,10 @@ export async function POST(request: NextRequest) {
   }
 
   const pinHash = await hashPin(pin);
+  const pinEncrypted = encryptPin(pin);
   const rows = await sql`
-    INSERT INTO users (name, pin_hash, role)
-    VALUES (${name}, ${pinHash}, ${role})
+    INSERT INTO users (name, pin_hash, pin_encrypted, role)
+    VALUES (${name}, ${pinHash}, ${pinEncrypted}, ${role})
     RETURNING id, name, role, created_at
   `;
 

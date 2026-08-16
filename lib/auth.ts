@@ -58,6 +58,44 @@ export function verifyPin(pin: string, hash: string): Promise<boolean> {
   return bcrypt.compare(pin, hash);
 }
 
+// Reversible PIN storage, kept alongside (never instead of) the bcrypt hash
+// above — login always verifies against the bcrypt hash, unaffected by any
+// of this. This exists purely so Admin can look up a user's current PIN in
+// the Users tab, per explicit request, understanding the tradeoff: anyone
+// with admin access (or raw database access) could decrypt these. Keyed off
+// SESSION_SECRET so no extra environment variable is needed.
+function getPinKey(): Buffer {
+  return crypto.createHash('sha256').update(getSecret()).digest();
+}
+
+export function encryptPin(pin: string): string {
+  const key = getPinKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(pin, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return [iv.toString('base64'), encrypted.toString('base64'), authTag.toString('base64')].join('.');
+}
+
+/** Returns null if the value can't be decrypted (e.g. a legacy user whose PIN was only ever bcrypt-hashed, never encrypted, before this feature existed). */
+export function decryptPin(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  try {
+    const [ivB64, dataB64, tagB64] = stored.split('.');
+    if (!ivB64 || !dataB64 || !tagB64) return null;
+    const key = getPinKey();
+    const iv = Buffer.from(ivB64, 'base64');
+    const data = Buffer.from(dataB64, 'base64');
+    const tag = Buffer.from(tagB64, 'base64');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
 export function encodeSession(user: SessionUser): string {
   const payload = Buffer.from(JSON.stringify(user)).toString('base64url');
   const sig = sign(payload);

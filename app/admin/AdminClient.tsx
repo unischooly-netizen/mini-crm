@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<Role, string> = {
   data_team: 'Data Team',
 };
 
-type User = { id: number; name: string; role: Role; created_at: string };
+type User = { id: number; name: string; role: Role; created_at: string; pin?: string | null };
 
 type Rule = {
   id: number;
@@ -121,19 +121,37 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <TabButton active={tab === 'leads' && leadsAgentFilter === 'All'} onClick={() => { setTab('leads'); setLeadsAgentFilter('All'); }}>All Leads</TabButton>
-        <TabButton active={tab === 'upload'} onClick={() => setTab('upload')}>Upload Leads</TabButton>
-        <TabButton active={tab === 'rules'} onClick={() => setTab('rules')}>Allocation Rules</TabButton>
-        <TabButton active={tab === 'users'} onClick={() => setTab('users')}>Users</TabButton>
-        {role === 'admin' && (
-          <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>Audit Log</TabButton>
-        )}
-        {(role === 'admin' || role === 'data_team') && (
-          <TabButton active={tab === 'data'} onClick={() => setTab('data')}>Data Tools</TabButton>
-        )}
-        {role === 'admin' && (
-          <TabButton active={tab === 'fullimport'} onClick={() => setTab('fullimport')}>Full Import</TabButton>
-        )}
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
+        {(() => {
+          const opsTabs: { key: Tab; label: string }[] = [
+            { key: 'upload', label: 'Upload Leads' },
+            { key: 'rules', label: 'Allocation Rules' },
+            { key: 'users', label: 'Users' },
+            ...(role === 'admin' ? [{ key: 'audit' as Tab, label: 'Audit Log' }] : []),
+            ...(role === 'admin' || role === 'data_team' ? [{ key: 'data' as Tab, label: 'Data Tools' }] : []),
+            ...(role === 'admin' ? [{ key: 'fullimport' as Tab, label: 'Full Import' }] : []),
+          ];
+          const opsKeys = opsTabs.map((t) => t.key);
+          const isOpsTabActive = opsKeys.includes(tab);
+          return (
+            <select
+              value={isOpsTabActive ? tab : ''}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setTab(e.target.value as Tab);
+              }}
+              style={{
+                padding: '8px 10px', border: isOpsTabActive ? '1px solid #111' : '1px solid #ccc',
+                borderRadius: 4, background: '#fff', cursor: 'pointer', fontWeight: isOpsTabActive ? 600 : 400,
+              }}
+            >
+              <option value="">Operations ▾</option>
+              {opsTabs.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+          );
+        })()}
         {agents.length > 0 && (
           <select
             value={agents.some((a) => String(a.id) === leadsAgentFilter) ? leadsAgentFilter : ''}
@@ -250,19 +268,119 @@ function UsersTab({ users, onChanged }: { users: User[]; onChanged: () => void }
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Existing users ({users.length})</h2>
         <table>
           <thead>
-            <tr><th>Name</th><th>Role</th></tr>
+            <tr><th>Name</th><th>Role</th><th>PIN</th><th></th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.name}</td>
-                <td>{ROLE_LABELS[u.role]}</td>
-              </tr>
+              <UserRow key={u.id} user={u} onChanged={onChanged} />
             ))}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function UserRow({ user, onChanged }: { user: User; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(user.name);
+  const [role, setRole] = useState<Role>(user.role);
+  const [newPin, setNewPin] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleSave() {
+    setError('');
+    setSaving(true);
+    try {
+      const patch: Record<string, unknown> = {};
+      if (name.trim() !== user.name) patch.name = name.trim();
+      if (role !== user.role) patch.role = role;
+      if (newPin.trim()) patch.pin = newPin.trim();
+      if (Object.keys(patch).length === 0) {
+        setEditing(false);
+        return;
+      }
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Could not save changes (server said: ${res.status}).`);
+        return;
+      }
+      setNewPin('');
+      setEditing(false);
+      onChanged();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    const ok = window.confirm(`Permanently delete ${user.name} (${ROLE_LABELS[user.role]})? This cannot be undone.`);
+    if (!ok) return;
+    setError('');
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Could not delete this user (server said: ${res.status}).`);
+        return;
+      }
+      onChanged();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <tr>
+        <td><input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} /></td>
+        <td>
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)} style={inputStyle}>
+            {Object.entries(ROLE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </td>
+        <td>
+          <input
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value)}
+            placeholder="New PIN (optional)"
+            style={{ ...inputStyle, width: 130 }}
+          />
+        </td>
+        <td colSpan={2}>
+          <button onClick={handleSave} disabled={saving} style={primaryButtonStyle}>{saving ? 'Saving…' : 'Save'}</button>{' '}
+          <button onClick={() => { setEditing(false); setName(user.name); setRole(user.role); setNewPin(''); setError(''); }} style={secondaryButtonStyle}>Cancel</button>
+          {error && <p style={{ color: 'crimson', fontSize: 12, margin: '4px 0 0' }}>{error}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <td>{user.name}</td>
+      <td>{ROLE_LABELS[user.role]}</td>
+      <td>{user.pin !== undefined ? (user.pin ?? <span style={{ color: '#999' }}>not viewable — reset to set</span>) : ''}</td>
+      <td><button onClick={() => setEditing(true)} style={secondaryButtonStyle}>Edit</button></td>
+      <td>
+        <button onClick={handleDelete} disabled={deleting} style={dangerButtonStyleSmall}>{deleting ? 'Deleting…' : 'Delete'}</button>
+        {error && <p style={{ color: 'crimson', fontSize: 12, margin: '4px 0 0' }}>{error}</p>}
+      </td>
+    </tr>
   );
 }
 
@@ -953,4 +1071,14 @@ const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #ccc',
   borderRadius: 4,
   cursor: 'pointer',
+};
+
+const dangerButtonStyleSmall: React.CSSProperties = {
+  padding: '5px 10px',
+  background: '#fdeaea',
+  color: '#b3261e',
+  border: '1px solid #f3b8b8',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontSize: 13,
 };

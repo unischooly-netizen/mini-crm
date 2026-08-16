@@ -31,6 +31,12 @@ export async function GET(request: NextRequest) {
     )
   `;
 
+  // Reversible (encrypted, not hashed) copy of the PIN, purely so Admin can
+  // look it up in the Users tab. Nullable: existing users created before
+  // this feature only have the bcrypt hash, which cannot be reversed —
+  // their PIN shows as not-viewable until an admin resets it.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_encrypted TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS leads (
       id SERIAL PRIMARY KEY,
