@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const leadCode = `LD-${String(nextNum).padStart(6, '0')}`;
+    const leadCode = `TLS-${String(nextNum).padStart(6, '0')}`;
     nextNum += 1;
 
     await sql`

@@ -1,6 +1,7 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
+import { formatDate } from '@/lib/format';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -516,7 +517,7 @@ function LeadsTab({
               <td>{lead.email}</td>
               <td>{lead.source}</td>
               <td>{lead.language}</td>
-              <td>{lead.assignedDate?.slice(0, 10)}</td>
+              <td>{formatDate(lead.assignedDate)}</td>
               <td>
                 <select
                   value={lead.ownerUserId ?? ''}
