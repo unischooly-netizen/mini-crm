@@ -71,30 +71,81 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
+
+  function setLoadErr(key: string, msg: string) {
+    setLoadErrors((prev) => ({ ...prev, [key]: msg }));
+  }
+  function clearLoadErr(key: string) {
+    setLoadErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   const loadUsers = useCallback(async () => {
-    const res = await fetch('/api/users');
-    const data = await res.json();
-    setUsers(data.users || []);
+    try {
+      const res = await fetch('/api/users');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadErr('users', data.error || `Could not load users (server said: ${res.status}). If this just started after an update, the database may need /api/init run again.`);
+        return;
+      }
+      clearLoadErr('users');
+      setUsers(data.users || []);
+    } catch {
+      setLoadErr('users', 'Could not reach the server for users. Check your connection and try again.');
+    }
   }, []);
 
   const loadRules = useCallback(async () => {
-    const res = await fetch('/api/allocation-rules');
-    const data = await res.json();
-    setRules(data.rules || []);
+    try {
+      const res = await fetch('/api/allocation-rules');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadErr('rules', data.error || `Could not load allocation rules (server said: ${res.status}).`);
+        return;
+      }
+      clearLoadErr('rules');
+      setRules(data.rules || []);
+    } catch {
+      setLoadErr('rules', 'Could not reach the server for allocation rules. Check your connection and try again.');
+    }
   }, []);
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/leads');
-    const data = await res.json();
-    setLeads(data.leads || []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/leads');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadErr('leads', data.error || `Could not load leads (server said: ${res.status}).`);
+        return;
+      }
+      clearLoadErr('leads');
+      setLeads(data.leads || []);
+    } catch {
+      setLoadErr('leads', 'Could not reach the server for leads. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const loadAudit = useCallback(async () => {
-    const res = await fetch('/api/audit-log');
-    const data = await res.json();
-    setAudit(data.entries || []);
+    try {
+      const res = await fetch('/api/audit-log');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadErr('audit', data.error || `Could not load the audit log (server said: ${res.status}).`);
+        return;
+      }
+      clearLoadErr('audit');
+      setAudit(data.entries || []);
+    } catch {
+      setLoadErr('audit', 'Could not reach the server for the audit log. Check your connection and try again.');
+    }
   }, []);
 
   useEffect(() => {
@@ -118,6 +169,14 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         <BrandHeader subtitle={`Admin (${adminName})`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
+
+      {Object.keys(loadErrors).length > 0 && (
+        <div style={{ background: '#fdeaea', border: '1px solid #f3b8b8', borderRadius: 4, padding: 12, marginBottom: 16 }}>
+          {Object.values(loadErrors).map((msg, i) => (
+            <p key={i} style={{ color: '#b3261e', margin: i === 0 ? 0 : '6px 0 0' }}>{msg}</p>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <TabButton active={tab === 'leads' && leadsAgentFilter === 'All'} onClick={() => { setTab('leads'); setLeadsAgentFilter('All'); }}>All Leads</TabButton>
