@@ -133,7 +133,7 @@ export default function LeadDetailClient({
     f.nextTrialTime = data.lead.nextTrialTime || '';
     f.admissionStatus = data.lead.admissionStatus || 'Pending';
     for (let i = 1; i <= REMINDER_CALL_COUNT; i++) {
-      f[`reminderCall${i}Status`] = data.lead[`reminderCall${i}Status`] || '';
+      f[`reminderCall${i}Status`] = data.lead[`reminderCall${i}Status`] || 'Not Contacted';
     }
     setForm(f);
   }, [leadId]);

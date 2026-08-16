@@ -131,7 +131,7 @@ export const TRIAL_CONCLUDING_STATUSES: string[] = ['Trial Done', 'Trial Not Don
 
 export const ADMISSION_STATUSES: string[] = ['Pending', 'On Hold', 'Closed Won', 'Closed Lost'];
 
-export const REMINDER_CALL_STATUSES: string[] = ['Contacted', 'No Answer', 'Call Back Requested'];
+export const REMINDER_CALL_STATUSES: string[] = ['Not Contacted', 'Contacted', 'No Answer', 'Call Back Requested'];
 
 export const REMINDER_CALL_COUNT = 3;
 

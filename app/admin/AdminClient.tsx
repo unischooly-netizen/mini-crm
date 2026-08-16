@@ -59,7 +59,7 @@ type AuditEntry = {
   createdAt: string;
 };
 
-type Tab = 'leads' | 'upload' | 'rules' | 'users' | 'audit' | 'data';
+type Tab = 'leads' | 'upload' | 'rules' | 'users' | 'audit' | 'data' | 'fullimport';
 
 export default function AdminClient({ adminName, role }: { adminName: string; role: Role }) {
   const router = useRouter();
@@ -130,6 +130,9 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         {(role === 'admin' || role === 'data_team') && (
           <TabButton active={tab === 'data'} onClick={() => setTab('data')}>Data Tools</TabButton>
         )}
+        {role === 'admin' && (
+          <TabButton active={tab === 'fullimport'} onClick={() => setTab('fullimport')}>Full Import</TabButton>
+        )}
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
         {agents.length > 0 && (
           <select
@@ -164,6 +167,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
       )}
       {tab === 'audit' && <AuditTab entries={audit} onRefresh={loadAudit} />}
       {tab === 'data' && <DataToolsTab role={role} />}
+      {tab === 'fullimport' && <FullImportTab onImported={() => { loadLeads(); loadAudit(); }} />}
     </div>
   );
 }
@@ -616,6 +620,7 @@ export function StatusBadge({ status }: { status: string }) {
     // Several fields share these same words (Pending, Rescheduled, Cancelled) —
     // one shared color per word keeps the whole app visually consistent.
     'Pending': { bg: '#eef1f4', fg: '#555' },
+    'Not Contacted': { bg: '#eef1f4', fg: '#555' },
     'Joined': { bg: '#e6f6ea', fg: '#0a7a2f' },
     'Not Joined': { bg: '#fdeaea', fg: '#b3261e' },
     'Completed': { bg: '#e6f6ea', fg: '#0a7a2f' },
@@ -653,6 +658,92 @@ export function followupColor(date: string | null | undefined, time: string | nu
     return target.getTime() < now.getTime() ? '#b3261e' : '#a15c00';
   }
   return '#0a7a2f';
+}
+
+function FullImportTab({ onImported }: { onImported: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{
+    rowsInFile: number;
+    inserted: number;
+    skippedDuplicates: number;
+    skippedBlank: number;
+    unmatchedOwners: string[];
+    unmatchedVh: string[];
+    unmatchedCounsellors: string[];
+  } | null>(null);
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file) {
+      setError('Choose a file first.');
+      return;
+    }
+    setError('');
+    setResult(null);
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/leads/full-import', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Import failed (server said: ${res.status}).`);
+        return;
+      }
+      setResult(data);
+      onImported();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: 16, marginTop: 0 }}>Full data import (migration)</h2>
+      <p style={{ fontSize: 14, color: '#555' }}>
+        For leads that already have history — call attempts, outcome, meeting/trial/admission status, VH and
+        Counsellor already assigned — unlike the plain Upload Leads tab, which is only for brand-new,
+        untouched leads. Add Vertical Head and Sales Counsellor users first; they&apos;re matched to the file by
+        exact name. Total Attempts, Qualification Status, Meeting Status, and Handover Status are always worked
+        out by the app itself from the other fields, not read from the file. Rows with a mobile number already
+        in the system are skipped automatically.
+      </p>
+      <form onSubmit={handleUpload}>
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          style={{ marginBottom: 12 }}
+        />
+        <br />
+        <button type="submit" disabled={uploading} style={primaryButtonStyle}>
+          {uploading ? 'Importing…' : 'Import'}
+        </button>
+      </form>
+      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {result && (
+        <div style={{ marginTop: 16, background: '#f0f8f0', padding: 12, borderRadius: 4 }}>
+          <p>Rows in file: {result.rowsInFile}</p>
+          <p>Leads added: {result.inserted}</p>
+          <p>Skipped duplicates: {result.skippedDuplicates}</p>
+          <p>Skipped blank rows: {result.skippedBlank}</p>
+          {result.unmatchedOwners.length > 0 && (
+            <p style={{ color: '#a15c00' }}>Pre-Sales Agent name(s) not found (left unassigned): {result.unmatchedOwners.join(', ')}</p>
+          )}
+          {result.unmatchedVh.length > 0 && (
+            <p style={{ color: '#a15c00' }}>Vertical Head name(s) not found (left unassigned): {result.unmatchedVh.join(', ')}</p>
+          )}
+          {result.unmatchedCounsellors.length > 0 && (
+            <p style={{ color: '#a15c00' }}>Sales Counsellor name(s) not found (left unassigned): {result.unmatchedCounsellors.join(', ')}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DataToolsTab({ role }: { role: Role }) {
