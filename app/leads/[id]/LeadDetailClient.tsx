@@ -187,19 +187,24 @@ export default function LeadDetailClient({
       patch.counsellorUpdate = form.counsellorUpdate || '';
     }
 
-    const res = await fetch(`/api/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(data.error || 'Could not save changes.');
-      return;
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Could not save changes (server said: ${res.status}).`);
+        return;
+      }
+      setSaved(true);
+      load();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setSaving(false);
     }
-    setSaved(true);
-    load();
   }
 
   return (
@@ -269,7 +274,12 @@ export default function LeadDetailClient({
       <div style={cardStyle}>
         <h2 style={h2Style}>Outcome</h2>
         <div style={gridStyle}>
+          <Field label="Total Attempts" value={String(lead.totalAttempts)} />
           <SelectField label="Final Outcome" value={form.finalOutcome} options={FINAL_OUTCOMES} onChange={(v) => set('finalOutcome', v)} disabled={!canEditAgentFields} />
+          <div>
+            <div style={labelStyle}>Qualification Status</div>
+            <StatusBadge status={lead.qualificationStatus} />
+          </div>
           <DateField label="Next Follow-up Date" value={form.nextFollowupDate} onChange={(v) => set('nextFollowupDate', v)} disabled={!canEditAgentFields} />
           <TimeField label="Next Follow-up Time" value={form.nextFollowupTime} onChange={(v) => set('nextFollowupTime', v)} disabled={!canEditAgentFields} />
         </div>
@@ -296,6 +306,7 @@ export default function LeadDetailClient({
       <div style={cardStyle}>
         <h2 style={h2Style}>Handover</h2>
         <div style={gridStyle}>
+          <Field label="Handover Status" value={lead.handoverStatus} />
           <SelectUsersField
             label="Assigned Vertical Head"
             value={form.assignedVhUserId}
@@ -311,6 +322,12 @@ export default function LeadDetailClient({
             disabled={!canAssignCounsellor}
           />
         </div>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 4 }}>
+          Handover Status updates itself automatically as the lead moves through Qualified → VH Assigned →
+          Counsellor Assigned (more stages come in Stage 3, once meeting/trial/admission tracking is added).
+          Counsellor / Meeting Update below is a free-text note the counsellor keeps updated by hand — the two
+          are related but not the same thing.
+        </p>
         <TextAreaField label="Counsellor / Meeting Update" value={form.counsellorUpdate} onChange={(v) => set('counsellorUpdate', v)} disabled={!canEditCounsellorUpdate} />
       </div>
 
