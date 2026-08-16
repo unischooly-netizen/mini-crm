@@ -98,13 +98,21 @@ export default function LeadDetailClient({
 
   const load = useCallback(async () => {
     setError('');
-    const res = await fetch(`/api/leads/${leadId}`);
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || 'Could not load this lead.');
+    let res: Response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let data: any;
+    try {
+      res = await fetch(`/api/leads/${leadId}`);
+      data = await res.json().catch(() => ({}));
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
       return;
     }
-    setLead(data.lead);
+    if (!res.ok) {
+      setError((data.error as string) || `Could not load this lead (server said: ${res.status}).`);
+      return;
+    }
+    setLead(data.lead as Lead);
     const f: Record<string, string> = {};
     for (let i = 1; i <= ATTEMPT_COUNT; i++) {
       f[`attempt${i}Status`] = data.lead[`attempt${i}Status`] || '';

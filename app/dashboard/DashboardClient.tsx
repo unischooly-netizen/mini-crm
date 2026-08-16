@@ -32,13 +32,26 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/leads');
-    const data = await res.json();
-    setLeads(data.leads || []);
-    setLoading(false);
+    setLoadError('');
+    try {
+      const res = await fetch('/api/leads');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadError(data.error || `Could not load leads (server said: ${res.status}).`);
+        setLeads([]);
+        return;
+      }
+      setLeads(data.leads || []);
+    } catch {
+      setLoadError('Could not reach the server. Check your connection and try again.');
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -98,6 +111,8 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
 
       {loading ? (
         <p>Loading…</p>
+      ) : loadError ? (
+        <p style={{ color: 'crimson' }}>{loadError}</p>
       ) : visibleLeads.length === 0 ? (
         <p>No leads here yet.</p>
       ) : (

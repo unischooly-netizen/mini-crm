@@ -98,13 +98,26 @@ export default function QualifiedLeadsClient({
   const [counsellorFilter, setCounsellorFilter] = useState(ALL);
   const [handoverFilter, setHandoverFilter] = useState(ALL);
   const [meetingDateFilter, setMeetingDateFilter] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/qualified-leads?view=${view}`);
-    const data = await res.json();
-    setLeads(data.leads || []);
-    setLoading(false);
+    setLoadError('');
+    try {
+      const res = await fetch(`/api/qualified-leads?view=${view}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadError(data.error || `Could not load leads (server said: ${res.status}). If this just started happening after an update, the database may need /api/init run again.`);
+        setLeads([]);
+        return;
+      }
+      setLeads(data.leads || []);
+    } catch {
+      setLoadError('Could not reach the server. Check your connection and try again.');
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
   }, [view]);
 
   useEffect(() => {
@@ -257,7 +270,10 @@ export default function QualifiedLeadsClient({
           )}
         </div>
 
-        {visibleLeads.length === 0 && !loading && (
+        {loadError && (
+          <p style={{ color: 'crimson' }}>{loadError}</p>
+        )}
+        {visibleLeads.length === 0 && !loading && !loadError && (
           <p style={{ color: '#777' }}>Nothing here yet.</p>
         )}
         {visibleLeads.length > 0 && (
