@@ -52,6 +52,41 @@ const SELECT_LEAD_COLUMNS = `
       l.reminder_call3_status AS "reminderCall3Status", l.reminder_call3_date AS "reminderCall3Date", l.reminder_call3_time AS "reminderCall3Time"
 `;
 
+// Columns whose Postgres type is DATE. The underlying driver hands these
+// back as native JS Date objects (not strings) when read server-side,
+// before Next.js gets a chance to JSON-serialize the response (JSON.stringify
+// auto-converts Date -> ISO string, which is why this never showed up on the
+// client — but code here in the route runs *before* that conversion). Any
+// date-math helper expecting a 'YYYY-MM-DD' string then crashes calling
+// .slice() on a Date object with something like "e.slice is not a function".
+// Fix at the source: normalize every DATE column to a plain string the
+// moment a row comes back from the database.
+const DATE_COLUMNS = [
+  'assignedDate', 'nextFollowupDate', 'meetingDate', 'nextMeetingDate',
+  'trialDate', 'nextTrialDate',
+  ...Array.from({ length: 9 }, (_, i) => `attempt${i + 1}Date`),
+  ...Array.from({ length: 3 }, (_, i) => `reminderCall${i + 1}Date`),
+];
+
+function toDateStr(v: unknown): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(v.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof v === 'string') return v.slice(0, 10);
+  return String(v).slice(0, 10);
+}
+
+function normalizeDateColumns(row: Record<string, unknown>): Record<string, unknown> {
+  for (const col of DATE_COLUMNS) {
+    if (col in row) row[col] = toDateStr(row[col]);
+  }
+  return row;
+}
+
 async function fetchLead(leadId: number) {
   const rows = await sql.query(
     `SELECT ${SELECT_LEAD_COLUMNS}
@@ -62,7 +97,8 @@ async function fetchLead(leadId: number) {
      LIMIT 1`,
     [leadId]
   );
-  return (rows as Record<string, unknown>[])[0] || null;
+  const row = (rows as Record<string, unknown>[])[0];
+  return row ? normalizeDateColumns(row) : null;
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

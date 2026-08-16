@@ -122,15 +122,15 @@ export default function LeadDetailClient({
     f.counsellorUpdate = data.lead.counsellorUpdate || '';
     f.assignedVhUserId = data.lead.assignedVhUserId ? String(data.lead.assignedVhUserId) : '';
     f.assignedCounsellorUserId = data.lead.assignedCounsellorUserId ? String(data.lead.assignedCounsellorUserId) : '';
-    f.connectingStatus = data.lead.connectingStatus || '';
+    f.connectingStatus = data.lead.connectingStatus || 'Pending';
     f.nextMeetingDate = data.lead.nextMeetingDate ? data.lead.nextMeetingDate.slice(0, 10) : '';
     f.nextMeetingTime = data.lead.nextMeetingTime || '';
     f.trialDate = data.lead.trialDate ? data.lead.trialDate.slice(0, 10) : '';
     f.trialTime = data.lead.trialTime || '';
-    f.trialStatus = data.lead.trialStatus || '';
+    f.trialStatus = data.lead.trialStatus || 'Pending';
     f.nextTrialDate = data.lead.nextTrialDate ? data.lead.nextTrialDate.slice(0, 10) : '';
     f.nextTrialTime = data.lead.nextTrialTime || '';
-    f.admissionStatus = data.lead.admissionStatus || '';
+    f.admissionStatus = data.lead.admissionStatus || 'Pending';
     for (let i = 1; i <= REMINDER_CALL_COUNT; i++) {
       f[`reminderCall${i}Status`] = data.lead[`reminderCall${i}Status`] || '';
     }
@@ -179,11 +179,13 @@ export default function LeadDetailClient({
   const canAssignVh = isAdmin;
   const canAssignCounsellor = isAdmin || isAssignedVh;
   const canEditCounsellorUpdate = isAdmin || isAssignedCounsellor;
-  const canEditConnecting = isAdmin || isAssignedCounsellor;
+  const canEditConnecting = isAdmin || isAssignedCounsellor || isOwnerAgent;
   const canEditNextMeeting = isAdmin || isOwnerAgent || isAssignedCounsellor;
+  // Trial and Admission are counsellor-only by design — the Pre-Sales Agent's
+  // job ends once the lead is qualified and handed off.
   const canEditTrial = isAdmin || isAssignedCounsellor;
   const canEditAdmission = isAdmin || isAssignedCounsellor;
-  const canEditReminderCalls = isAdmin || isAssignedCounsellor;
+  const canEditReminderCalls = isAdmin || isAssignedCounsellor || isOwnerAgent;
   const canEditAnything =
     canEditAgentFields || canAssignVh || canAssignCounsellor || canEditCounsellorUpdate ||
     canEditConnecting || canEditNextMeeting || canEditTrial || canEditAdmission || canEditReminderCalls;
@@ -316,23 +318,25 @@ export default function LeadDetailClient({
       {/* Attempts */}
       <div style={cardStyle}>
         <h2 style={h2Style}>Call attempts ({lead.totalAttempts} of {ATTEMPT_COUNT} logged)</h2>
-        {Array.from({ length: ATTEMPT_COUNT }, (_, idx) => idx + 1).map((i) => (
-          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ width: 90, fontSize: 13, color: '#555' }}>Attempt {i}</div>
-            <select
-              value={form[`attempt${i}Status`] || ''}
-              onChange={(e) => set(`attempt${i}Status`, e.target.value)}
-              disabled={!canEditAgentFields}
-              style={inputStyle}
-            >
-              <option value="">—</option>
-              {ATTEMPT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <div style={{ fontSize: 13, color: '#777' }}>
-              {formatDateTime(lead[`attempt${i}Date`] as string, lead[`attempt${i}Time`] as string) || 'not logged yet'}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '4px 24px' }}>
+          {Array.from({ length: ATTEMPT_COUNT }, (_, idx) => idx + 1).map((i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+              <div style={{ width: 66, fontSize: 13, color: '#555', flexShrink: 0 }}>Attempt {i}</div>
+              <select
+                value={form[`attempt${i}Status`] || ''}
+                onChange={(e) => set(`attempt${i}Status`, e.target.value)}
+                disabled={!canEditAgentFields}
+                style={{ ...inputStyle, width: 150, flexShrink: 0 }}
+              >
+                <option value="">—</option>
+                {ATTEMPT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <div style={{ fontSize: 12, color: '#777', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {formatDateTime(lead[`attempt${i}Date`] as string, lead[`attempt${i}Time`] as string) || 'not logged yet'}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Outcome */}

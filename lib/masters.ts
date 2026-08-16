@@ -95,6 +95,7 @@ export const AGENT_EDITABLE_FIELDS = [
   'nextFollowupDate', 'nextFollowupTime', // only actually applied when not auto-triggered — enforced in lib/leadLogic.ts
   'nextMeetingDate', 'nextMeetingTime',
   'connectingStatus', // Pre-Sales Agent can also mark whether the lead joined the meeting, same as the Sales Counsellor
+  ...Array.from({ length: 3 }, (_, i) => `reminderCall${i + 1}Status`), // and log reminder calls, same as the Sales Counsellor
 ] as const;
 
 // ---------------------------------------------------------------------------
