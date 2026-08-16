@@ -98,6 +98,33 @@ export async function GET(request: NextRequest) {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_counsellor_user_id INTEGER REFERENCES users(id)`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS counsellor_update TEXT NOT NULL DEFAULT ''`;
 
+  // --- Stage 3 columns: Connecting/Meeting, Trial, Admission, Reminder Calls, audit ---
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS connecting_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_status TEXT NOT NULL DEFAULT 'Pending'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_attempt_count INTEGER NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_meeting_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_meeting_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS trial_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS trial_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS trial_status TEXT NOT NULL DEFAULT 'Pending'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS trial_attempt_count INTEGER NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_trial_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_trial_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS admission_status TEXT NOT NULL DEFAULT 'Pending'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS admission_timestamp TIMESTAMPTZ`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'Active Qualified'`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS revoked_timestamp TIMESTAMPTZ`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS revoked_reason TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call1_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call1_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call1_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call2_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call2_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call2_time TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call3_status TEXT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call3_date DATE`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call3_time TEXT`;
+
   // Widen the status check constraint to the new pipeline status values.
   await sql`ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check`;
   await sql`ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN ('New','Not Picked','Follow-up Needed','Qualified','Not Qualified'))`;

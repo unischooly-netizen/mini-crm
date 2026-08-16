@@ -608,6 +608,27 @@ export function StatusBadge({ status }: { status: string }) {
     'Not Picked': { bg: '#eef1f4', fg: '#555' },
     'New': { bg: '#eaf1fd', fg: '#1a56c4' },
     'Not Reviewed': { bg: '#eef1f4', fg: '#555' },
+    // Stage 3: Connecting / Meeting / Trial / Admission / Reminder Call statuses.
+    // Several fields share these same words (Pending, Rescheduled, Cancelled) —
+    // one shared color per word keeps the whole app visually consistent.
+    'Pending': { bg: '#eef1f4', fg: '#555' },
+    'Joined': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Not Joined': { bg: '#fdeaea', fg: '#b3261e' },
+    'Completed': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Not Completed': { bg: '#fdeaea', fg: '#b3261e' },
+    'Rescheduled': { bg: '#fff4e0', fg: '#a15c00' },
+    'Cancelled': { bg: '#e2e2e2', fg: '#333' },
+    'Trial Done': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Trial Not Done': { bg: '#fdeaea', fg: '#b3261e' },
+    'Trial Sceduled but not done': { bg: '#fff4e0', fg: '#a15c00' },
+    'On Hold': { bg: '#fff4e0', fg: '#a15c00' },
+    'Closed Won': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Closed Lost': { bg: '#fdeaea', fg: '#b3261e' },
+    'Contacted': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'No Answer': { bg: '#fdeaea', fg: '#b3261e' },
+    'Call Back Requested': { bg: '#fff4e0', fg: '#a15c00' },
+    'Active Qualified': { bg: '#e6f6ea', fg: '#0a7a2f' },
+    'Revoked': { bg: '#fdeaea', fg: '#b3261e' },
   };
   const c = colors[status] || { bg: '#eee', fg: '#333' };
   return (

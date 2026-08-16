@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { formatDateTime } from '@/lib/format';
-import { followupColor } from '@/app/admin/AdminClient';
+import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
 type UserOption = { id: number; name: string; role: Role };
+type View = 'qualified' | 'reschedule' | 'cancelled';
 
 type QLead = {
   id: number;
@@ -25,6 +26,8 @@ type QLead = {
   assignedVhName: string | null;
   assignedCounsellorUserId: number | null;
   assignedCounsellorName: string | null;
+  connectingStatus: string | null;
+  meetingStatus: string;
 };
 
 const backPathFor: Record<Role, string> = {
@@ -37,6 +40,41 @@ const backPathFor: Record<Role, string> = {
 
 const ALL = 'All';
 
+// "Today's meetings first, then future ascending, then past at the bottom" —
+// computed against IST "today" (not the browser's local date), matching how
+// every other date in the app is treated.
+function todayIst(): string {
+  const now = new Date();
+  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const y = ist.getUTCFullYear();
+  const m = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(ist.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function meetingSortBucket(dateStr: string | null, today: string): number {
+  if (!dateStr) return 3; // no meeting date at all -> very bottom
+  const d = dateStr.slice(0, 10);
+  if (d === today) return 0;
+  if (d > today) return 1; // future
+  return 2; // past / overdue
+}
+
+function sortQualifiedLeads(leads: QLead[]): QLead[] {
+  const today = todayIst();
+  return [...leads].sort((a, b) => {
+    const ba = meetingSortBucket(a.meetingDate, today);
+    const bb = meetingSortBucket(b.meetingDate, today);
+    if (ba !== bb) return ba - bb;
+    // Within "today" and "future": soonest first. Within "past": soonest (least overdue) first too,
+    // i.e. most-recently-passed at the top of the past group, oldest at the very bottom.
+    const ta = `${a.meetingDate || ''} ${a.meetingTime || ''}`;
+    const tb = `${b.meetingDate || ''} ${b.meetingTime || ''}`;
+    if (ba === 2) return tb.localeCompare(ta); // past: most recent first
+    return ta.localeCompare(tb); // today/future: soonest first
+  });
+}
+
 export default function QualifiedLeadsClient({
   role,
   selfUserId,
@@ -47,6 +85,9 @@ export default function QualifiedLeadsClient({
   selfName: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const view = ((searchParams.get('view') as View) || 'qualified') as View;
+
   const [leads, setLeads] = useState<QLead[]>([]);
   const [vertHeads, setVertHeads] = useState<UserOption[]>([]);
   const [counsellors, setCounsellors] = useState<UserOption[]>([]);
@@ -56,14 +97,15 @@ export default function QualifiedLeadsClient({
   const [vhFilter, setVhFilter] = useState(ALL);
   const [counsellorFilter, setCounsellorFilter] = useState(ALL);
   const [handoverFilter, setHandoverFilter] = useState(ALL);
+  const [meetingDateFilter, setMeetingDateFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/qualified-leads');
+    const res = await fetch(`/api/qualified-leads?view=${view}`);
     const data = await res.json();
     setLeads(data.leads || []);
     setLoading(false);
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     load();
@@ -111,7 +153,7 @@ export default function QualifiedLeadsClient({
   const languages = Array.from(new Set(leads.map((l) => l.language).filter(Boolean)));
   const handoverStatuses = Array.from(new Set(leads.map((l) => l.handoverStatus).filter(Boolean)));
 
-  const visibleLeads = leads.filter((l) => {
+  const filteredLeads = leads.filter((l) => {
     const q = search.trim().toLowerCase();
     if (q) {
       const hit =
@@ -124,13 +166,24 @@ export default function QualifiedLeadsClient({
     if (vhFilter !== ALL && String(l.assignedVhUserId) !== vhFilter) return false;
     if (counsellorFilter !== ALL && String(l.assignedCounsellorUserId) !== counsellorFilter) return false;
     if (handoverFilter !== ALL && l.handoverStatus !== handoverFilter) return false;
+    if (meetingDateFilter && (!l.meetingDate || l.meetingDate.slice(0, 10) !== meetingDateFilter)) return false;
     return true;
   });
 
+  const visibleLeads = sortQualifiedLeads(filteredLeads);
+
   let subtitle = 'Qualified Leads';
-  if (role === 'vertical_head') subtitle = `Qualified Leads assigned to ${selfName}`;
-  if (role === 'sales_counsellor') subtitle = `Qualified Leads assigned to ${selfName}`;
-  if (role === 'presales_agent') subtitle = 'Leads you qualified';
+  if (view === 'reschedule') subtitle = 'Reschedule Pending';
+  if (view === 'cancelled') subtitle = 'Cancelled Meetings';
+  if (role === 'vertical_head') subtitle += ` — assigned to ${selfName}`;
+  if (role === 'sales_counsellor') subtitle += ` — assigned to ${selfName}`;
+  if (role === 'presales_agent') subtitle += ' — leads you qualified';
+
+  const tabs: { key: View; label: string }[] = [
+    { key: 'qualified', label: 'Qualified Leads' },
+    { key: 'reschedule', label: 'Reschedule Pending' },
+    { key: 'cancelled', label: 'Cancelled' },
+  ];
 
   return (
     <div style={{ maxWidth: 1300, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
@@ -140,10 +193,30 @@ export default function QualifiedLeadsClient({
       </div>
       <Link href={backPathFor[role]} style={{ fontSize: 14 }}>← Back</Link>
 
-      <div style={{ ...cardStyle, marginTop: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 4, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => router.push(t.key === 'qualified' ? '/qualified-leads' : `/qualified-leads?view=${t.key}`)}
+            style={{
+              padding: '6px 14px',
+              border: '1px solid #ccc',
+              borderRadius: 4,
+              background: view === t.key ? '#111' : '#fff',
+              color: view === t.key ? '#fff' : '#111',
+              cursor: 'pointer',
+              fontSize: 14,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
           <h2 style={{ fontSize: 16, margin: 0 }}>
-            {loading ? 'Loading…' : `${visibleLeads.length} of ${leads.length} qualified lead(s)`}
+            {loading ? 'Loading…' : `${visibleLeads.length} of ${leads.length} lead(s)`}
           </h2>
           <input
             type="text"
@@ -154,7 +227,7 @@ export default function QualifiedLeadsClient({
           />
         </div>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
           <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)} style={inputStyle}>
             <option value={ALL}>All languages</option>
             {languages.map((l) => <option key={l} value={l}>{l}</option>)}
@@ -175,6 +248,13 @@ export default function QualifiedLeadsClient({
             <option value={ALL}>All handover statuses</option>
             {handoverStatuses.map((h) => <option key={h} value={h}>{h}</option>)}
           </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#555' }}>
+            Meeting date:
+            <input type="date" value={meetingDateFilter} onChange={(e) => setMeetingDateFilter(e.target.value)} style={inputStyle} />
+          </label>
+          {meetingDateFilter && (
+            <button onClick={() => setMeetingDateFilter('')} style={secondaryButtonStyle}>Clear date</button>
+          )}
         </div>
 
         {visibleLeads.length === 0 && !loading && (
@@ -186,7 +266,7 @@ export default function QualifiedLeadsClient({
               <tr>
                 <th>Meeting Date &amp; Time</th><th>Mode</th>
                 <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th><th>Pre-Sales Agent</th>
-                <th>Handover Status</th>
+                <th>Connecting Status</th><th>Handover Status</th>
                 {showVhColumn && <th>Vertical Head</th>}
                 {showCounsellorColumn && <th>Sales Counsellor</th>}
                 <th></th>
@@ -204,6 +284,7 @@ export default function QualifiedLeadsClient({
                   <td>{l.mobile}</td>
                   <td>{l.language}</td>
                   <td>{l.ownerName || '—'}</td>
+                  <td>{l.connectingStatus ? <StatusBadge status={l.connectingStatus} /> : '—'}</td>
                   <td>{l.handoverStatus}</td>
                   {showVhColumn && (
                     <td>

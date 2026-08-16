@@ -2,16 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { logAction } from '@/lib/audit';
-import { AGENT_EDITABLE_FIELDS } from '@/lib/masters';
+import { AGENT_EDITABLE_FIELDS, COUNSELLOR_EDITABLE_FIELDS } from '@/lib/masters';
 import {
   computeTotalAttempts,
   computeQualificationStatus,
   computePipelineStatus,
   computeHandoverStatus,
   computeNextFollowup,
+  computeBusinessHoursFollowup,
   isAutoFollowupTrigger,
+  computeMeetingStatus,
+  isMeetingConcludingStatus,
+  isTrialConcludingStatus,
+  computeLifecycle,
 } from '@/lib/leadLogic';
-import { toIstDateTimeParts, subtractMinutes } from '@/lib/followup';
+import { toIstDateTimeParts, subtractMinutes, fromIstWallClock } from '@/lib/followup';
 
 const SELECT_LEAD_COLUMNS = `
       l.id, l.lead_code AS "leadCode", l.name, l.mobile, l.email, l.source, l.language,
@@ -33,7 +38,18 @@ const SELECT_LEAD_COLUMNS = `
       l.preferred_mode AS "preferredMode", l.handover_status AS "handoverStatus",
       l.assigned_vh_user_id AS "assignedVhUserId", vh.name AS "assignedVhName",
       l.assigned_counsellor_user_id AS "assignedCounsellorUserId", counsellor.name AS "assignedCounsellorName",
-      l.counsellor_update AS "counsellorUpdate", l.updated_at AS "updatedAt"
+      l.counsellor_update AS "counsellorUpdate", l.updated_at AS "updatedAt",
+      l.connecting_status AS "connectingStatus", l.meeting_status AS "meetingStatus",
+      l.meeting_attempt_count AS "meetingAttemptCount",
+      l.next_meeting_date AS "nextMeetingDate", l.next_meeting_time AS "nextMeetingTime",
+      l.trial_date AS "trialDate", l.trial_time AS "trialTime", l.trial_status AS "trialStatus",
+      l.trial_attempt_count AS "trialAttemptCount",
+      l.next_trial_date AS "nextTrialDate", l.next_trial_time AS "nextTrialTime",
+      l.admission_status AS "admissionStatus", l.admission_timestamp AS "admissionTimestamp",
+      l.lifecycle_status AS "lifecycleStatus", l.revoked_timestamp AS "revokedTimestamp", l.revoked_reason AS "revokedReason",
+      l.reminder_call1_status AS "reminderCall1Status", l.reminder_call1_date AS "reminderCall1Date", l.reminder_call1_time AS "reminderCall1Time",
+      l.reminder_call2_status AS "reminderCall2Status", l.reminder_call2_date AS "reminderCall2Date", l.reminder_call2_time AS "reminderCall2Time",
+      l.reminder_call3_status AS "reminderCall3Status", l.reminder_call3_date AS "reminderCall3Date", l.reminder_call3_time AS "reminderCall3Time"
 `;
 
 async function fetchLead(leadId: number) {
@@ -111,12 +127,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // it shows the user, so this is really a safety net).
   const allowedKeys = new Set<string>();
   if (isAdmin) {
-    // Admin can edit anything an agent can, plus owner/VH assignment.
+    // Admin can edit anything an agent or counsellor can, plus owner/VH assignment.
     AGENT_EDITABLE_FIELDS.forEach((k) => allowedKeys.add(k));
+    COUNSELLOR_EDITABLE_FIELDS.forEach((k) => allowedKeys.add(k));
     allowedKeys.add('ownerUserId');
     allowedKeys.add('assignedVhUserId');
     allowedKeys.add('assignedCounsellorUserId');
-    allowedKeys.add('counsellorUpdate');
   }
   if (isDataTeam) {
     allowedKeys.add('ownerUserId');
@@ -128,7 +144,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     allowedKeys.add('assignedCounsellorUserId');
   }
   if (isAssignedCounsellor) {
-    allowedKeys.add('counsellorUpdate');
+    COUNSELLOR_EDITABLE_FIELDS.forEach((k) => allowedKeys.add(k));
   }
 
   for (const key of Object.keys(body)) {
@@ -138,110 +154,32 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const nowUtc = new Date();
   const nowParts = toIstDateTimeParts(nowUtc);
 
-  // Detect which attempt (if any) is being newly logged this save, so we can
-  // auto-stamp its date/time and, if applicable, auto-schedule the next follow-up.
+  // ---- Attempts 1-9: detect which one (if any) is being newly logged this save ----
   let triggerIndex: number | null = null;
   let triggerStatus: string | null = null;
-  if (body.attempt1Status !== undefined && body.attempt1Status !== existing.attempt1Status && body.attempt1Status) {
-    triggerIndex = 1;
-    triggerStatus = body.attempt1Status as string;
-  }
-  if (body.attempt2Status !== undefined && body.attempt2Status !== existing.attempt2Status && body.attempt2Status) {
-    triggerIndex = 2;
-    triggerStatus = body.attempt2Status as string;
-  }
-  if (body.attempt3Status !== undefined && body.attempt3Status !== existing.attempt3Status && body.attempt3Status) {
-    triggerIndex = 3;
-    triggerStatus = body.attempt3Status as string;
-  }
-  if (body.attempt4Status !== undefined && body.attempt4Status !== existing.attempt4Status && body.attempt4Status) {
-    triggerIndex = 4;
-    triggerStatus = body.attempt4Status as string;
-  }
-  if (body.attempt5Status !== undefined && body.attempt5Status !== existing.attempt5Status && body.attempt5Status) {
-    triggerIndex = 5;
-    triggerStatus = body.attempt5Status as string;
-  }
-  if (body.attempt6Status !== undefined && body.attempt6Status !== existing.attempt6Status && body.attempt6Status) {
-    triggerIndex = 6;
-    triggerStatus = body.attempt6Status as string;
-  }
-  if (body.attempt7Status !== undefined && body.attempt7Status !== existing.attempt7Status && body.attempt7Status) {
-    triggerIndex = 7;
-    triggerStatus = body.attempt7Status as string;
-  }
-  if (body.attempt8Status !== undefined && body.attempt8Status !== existing.attempt8Status && body.attempt8Status) {
-    triggerIndex = 8;
-    triggerStatus = body.attempt8Status as string;
-  }
-  if (body.attempt9Status !== undefined && body.attempt9Status !== existing.attempt9Status && body.attempt9Status) {
-    triggerIndex = 9;
-    triggerStatus = body.attempt9Status as string;
+  for (let i = 1; i <= 9; i++) {
+    const key = `attempt${i}Status`;
+    if (body[key] !== undefined && body[key] !== existing[key] && body[key]) {
+      triggerIndex = i;
+      triggerStatus = body[key] as string;
+    }
   }
 
-  const attempt1Status = (body.attempt1Status !== undefined ? body.attempt1Status : existing.attempt1Status) || null;
-  const attempt2Status = (body.attempt2Status !== undefined ? body.attempt2Status : existing.attempt2Status) || null;
-  const attempt3Status = (body.attempt3Status !== undefined ? body.attempt3Status : existing.attempt3Status) || null;
-  const attempt4Status = (body.attempt4Status !== undefined ? body.attempt4Status : existing.attempt4Status) || null;
-  const attempt5Status = (body.attempt5Status !== undefined ? body.attempt5Status : existing.attempt5Status) || null;
-  const attempt6Status = (body.attempt6Status !== undefined ? body.attempt6Status : existing.attempt6Status) || null;
-  const attempt7Status = (body.attempt7Status !== undefined ? body.attempt7Status : existing.attempt7Status) || null;
-  const attempt8Status = (body.attempt8Status !== undefined ? body.attempt8Status : existing.attempt8Status) || null;
-  const attempt9Status = (body.attempt9Status !== undefined ? body.attempt9Status : existing.attempt9Status) || null;
-
-  let attempt1Date = existing.attempt1Date;
-  let attempt1Time = existing.attempt1Time;
-  if (triggerIndex === 1) {
-    attempt1Date = nowParts.date;
-    attempt1Time = nowParts.time;
-  }
-  let attempt2Date = existing.attempt2Date;
-  let attempt2Time = existing.attempt2Time;
-  if (triggerIndex === 2) {
-    attempt2Date = nowParts.date;
-    attempt2Time = nowParts.time;
-  }
-  let attempt3Date = existing.attempt3Date;
-  let attempt3Time = existing.attempt3Time;
-  if (triggerIndex === 3) {
-    attempt3Date = nowParts.date;
-    attempt3Time = nowParts.time;
-  }
-  let attempt4Date = existing.attempt4Date;
-  let attempt4Time = existing.attempt4Time;
-  if (triggerIndex === 4) {
-    attempt4Date = nowParts.date;
-    attempt4Time = nowParts.time;
-  }
-  let attempt5Date = existing.attempt5Date;
-  let attempt5Time = existing.attempt5Time;
-  if (triggerIndex === 5) {
-    attempt5Date = nowParts.date;
-    attempt5Time = nowParts.time;
-  }
-  let attempt6Date = existing.attempt6Date;
-  let attempt6Time = existing.attempt6Time;
-  if (triggerIndex === 6) {
-    attempt6Date = nowParts.date;
-    attempt6Time = nowParts.time;
-  }
-  let attempt7Date = existing.attempt7Date;
-  let attempt7Time = existing.attempt7Time;
-  if (triggerIndex === 7) {
-    attempt7Date = nowParts.date;
-    attempt7Time = nowParts.time;
-  }
-  let attempt8Date = existing.attempt8Date;
-  let attempt8Time = existing.attempt8Time;
-  if (triggerIndex === 8) {
-    attempt8Date = nowParts.date;
-    attempt8Time = nowParts.time;
-  }
-  let attempt9Date = existing.attempt9Date;
-  let attempt9Time = existing.attempt9Time;
-  if (triggerIndex === 9) {
-    attempt9Date = nowParts.date;
-    attempt9Time = nowParts.time;
+  const attemptStatuses: (string | null)[] = [];
+  const attemptDates: (string | null)[] = [];
+  const attemptTimes: (string | null)[] = [];
+  for (let i = 1; i <= 9; i++) {
+    const key = `attempt${i}Status`;
+    const status = ((body[key] !== undefined ? body[key] : existing[key]) || null) as string | null;
+    attemptStatuses.push(status);
+    let date = (existing[`attempt${i}Date`] || null) as string | null;
+    let time = (existing[`attempt${i}Time`] || null) as string | null;
+    if (triggerIndex === i) {
+      date = nowParts.date;
+      time = nowParts.time;
+    }
+    attemptDates.push(date);
+    attemptTimes.push(time);
   }
 
   const state = ((body.state !== undefined ? body.state : existing.state) || null) as string | null;
@@ -250,8 +188,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const finalOutcome = ((body.finalOutcome !== undefined ? body.finalOutcome : existing.finalOutcome) || null) as string | null;
   const notes = body.remarks !== undefined ? String(body.remarks) : (existing.notes as string) || '';
   const courseStartTimeline = ((body.courseStartTimeline !== undefined ? body.courseStartTimeline : existing.courseStartTimeline) || null) as string | null;
-  const meetingDate = ((body.meetingDate !== undefined ? body.meetingDate : existing.meetingDate) || null) as string | null;
-  const meetingTime = ((body.meetingTime !== undefined ? body.meetingTime : existing.meetingTime) || null) as string | null;
   const preferredMode = ((body.preferredMode !== undefined ? body.preferredMode : existing.preferredMode) || null) as string | null;
   const counsellorUpdate = body.counsellorUpdate !== undefined ? String(body.counsellorUpdate) : (existing.counsellorUpdate as string) || '';
 
@@ -261,67 +197,225 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const newOwnerUserId = body.ownerUserId !== undefined ? (body.ownerUserId as number | null) : ownerUserId;
 
   const totalAttempts = computeTotalAttempts({
-attempt1Status, attempt2Status, attempt3Status, attempt4Status, attempt5Status, attempt6Status, attempt7Status, attempt8Status, attempt9Status
+    attempt1Status: attemptStatuses[0], attempt2Status: attemptStatuses[1], attempt3Status: attemptStatuses[2],
+    attempt4Status: attemptStatuses[3], attempt5Status: attemptStatuses[4], attempt6Status: attemptStatuses[5],
+    attempt7Status: attemptStatuses[6], attempt8Status: attemptStatuses[7], attempt9Status: attemptStatuses[8],
   });
   const qualificationStatus = computeQualificationStatus(finalOutcome);
   const pipelineStatus = computePipelineStatus(totalAttempts, qualificationStatus);
   const handoverStatus = computeHandoverStatus(qualificationStatus, assignedVhUserId, assignedCounsellorUserId);
 
-  // Auto-schedule next follow-up. Priority order:
-  //   1) A meeting is on the books (Meeting Date + Time set) — remind 30 minutes before it.
-  //      Recomputed every save so rescheduling the meeting keeps the reminder in sync.
-  //   2) This save just logged a "didn't connect" attempt and there's still no Final
-  //      Outcome — schedule the next business-hours call-back.
-  //   3) Otherwise, respect whatever was already there (or a manual value typed in).
+  // ---- Meeting / Connecting Status cascade ----
+  // Next Meeting Date/Time is a *transient* reschedule input: when both are
+  // supplied together, they fold into Meeting Date/Time immediately and the
+  // Next Meeting fields go back to blank in the same save. Connecting
+  // Status becomes "Rescheduled" automatically when this happens.
+  const connectingStatusRaw = body.connectingStatus !== undefined ? (body.connectingStatus as string | null) : undefined;
+  const connectingStatusChanged = connectingStatusRaw !== undefined && connectingStatusRaw !== existing.connectingStatus;
+
+  const nextMeetingDateInput = ((body.nextMeetingDate !== undefined ? body.nextMeetingDate : null) || null) as string | null;
+  const nextMeetingTimeInput = ((body.nextMeetingTime !== undefined ? body.nextMeetingTime : null) || null) as string | null;
+  const meetingRescheduled = !!(nextMeetingDateInput && nextMeetingTimeInput);
+
+  let meetingDate = ((body.meetingDate !== undefined ? body.meetingDate : existing.meetingDate) || null) as string | null;
+  let meetingTime = ((body.meetingTime !== undefined ? body.meetingTime : existing.meetingTime) || null) as string | null;
+  let nextMeetingDate: string | null = nextMeetingDateInput;
+  let nextMeetingTime: string | null = nextMeetingTimeInput;
+  let finalConnectingStatus = (connectingStatusRaw !== undefined ? connectingStatusRaw : (existing.connectingStatus as string | null)) || null;
+
+  const notJoinedTriggered = connectingStatusChanged && connectingStatusRaw === 'Not Joined';
+
+  if (meetingRescheduled) {
+    meetingDate = nextMeetingDateInput;
+    meetingTime = nextMeetingTimeInput;
+    nextMeetingDate = null;
+    nextMeetingTime = null;
+    finalConnectingStatus = 'Rescheduled';
+  } else if (notJoinedTriggered) {
+    // Meeting Date/Time is intentionally left untouched here — only the
+    // Next Follow-up gets moved (see below). The lead now naturally shows
+    // up in the Reschedule Pending view (filtered on Connecting Status).
+    finalConnectingStatus = 'Not Joined';
+  }
+
+  const meetingStatus = computeMeetingStatus(finalConnectingStatus, (existing.meetingStatus as string) || 'Pending');
+
+  let meetingAttemptCount = Number(existing.meetingAttemptCount) || 0;
+  if (connectingStatusChanged && isMeetingConcludingStatus(connectingStatusRaw)) {
+    meetingAttemptCount += 1;
+  }
+
+  // ---- Trial (mirrors Meeting's automation pattern) ----
+  const trialStatusRaw = body.trialStatus !== undefined ? (body.trialStatus as string | null) : undefined;
+  const trialStatusChanged = trialStatusRaw !== undefined && trialStatusRaw !== existing.trialStatus;
+
+  const nextTrialDateInput = ((body.nextTrialDate !== undefined ? body.nextTrialDate : null) || null) as string | null;
+  const nextTrialTimeInput = ((body.nextTrialTime !== undefined ? body.nextTrialTime : null) || null) as string | null;
+  const trialRescheduled = !!(nextTrialDateInput && nextTrialTimeInput);
+
+  let trialDate = ((body.trialDate !== undefined ? body.trialDate : existing.trialDate) || null) as string | null;
+  let trialTime = ((body.trialTime !== undefined ? body.trialTime : existing.trialTime) || null) as string | null;
+  let nextTrialDate: string | null = nextTrialDateInput;
+  let nextTrialTime: string | null = nextTrialTimeInput;
+  let finalTrialStatus = (trialStatusRaw !== undefined ? trialStatusRaw : (existing.trialStatus as string | null)) || null;
+
+  const trialNotDoneTriggered = trialStatusChanged && trialStatusRaw === 'Trial Not Done';
+
+  if (trialRescheduled) {
+    trialDate = nextTrialDateInput;
+    trialTime = nextTrialTimeInput;
+    nextTrialDate = null;
+    nextTrialTime = null;
+    finalTrialStatus = 'Rescheduled';
+  } else if (trialNotDoneTriggered) {
+    finalTrialStatus = 'Trial Not Done';
+  }
+
+  let trialAttemptCount = Number(existing.trialAttemptCount) || 0;
+  if (trialStatusChanged && isTrialConcludingStatus(trialStatusRaw)) {
+    trialAttemptCount += 1;
+  }
+
+  // ---- Admission ----
+  const admissionStatusRaw = body.admissionStatus !== undefined ? (body.admissionStatus as string | null) : undefined;
+  const admissionStatusChanged = admissionStatusRaw !== undefined && admissionStatusRaw !== existing.admissionStatus;
+  const admissionStatus = (admissionStatusRaw !== undefined ? admissionStatusRaw : (existing.admissionStatus as string | null)) || null;
+  const admissionTimestamp = admissionStatusChanged ? nowUtc.toISOString() : (existing.admissionTimestamp as string | null);
+
+  // ---- Reminder Calls 1-3 (same auto-stamp pattern as call attempts) ----
+  const reminderStatuses: (string | null)[] = [];
+  const reminderDates: (string | null)[] = [];
+  const reminderTimes: (string | null)[] = [];
+  for (let i = 1; i <= 3; i++) {
+    const key = `reminderCall${i}Status`;
+    const raw = body[key] !== undefined ? (body[key] as string | null) : undefined;
+    const changed = raw !== undefined && raw !== existing[key] && raw;
+    const status = (raw !== undefined ? raw : (existing[key] as string | null)) || null;
+    reminderStatuses.push(status);
+    reminderDates.push((changed ? nowParts.date : (existing[`reminderCall${i}Date`] as string | null)) || null);
+    reminderTimes.push((changed ? nowParts.time : (existing[`reminderCall${i}Time`] as string | null)) || null);
+  }
+
+  // ---- Next Follow-up: priority-ordered automation ----
+  // Whichever pipeline stage the lead has progressed furthest into "owns"
+  // the reminder: Trial (if one has ever been scheduled) takes priority
+  // over Meeting, which takes priority over the plain call-attempt rule.
+  //   1) Trial marked Not Done this save        -> Trial time + 1hr (business hours), Trial Date/Time untouched
+  //   2) Trial just rescheduled                  -> new Trial time - 30min
+  //   3) Trial upcoming (Pending/Rescheduled)     -> Trial time - 30min
+  //   4) Meeting marked Not Joined this save      -> Meeting time + 1hr (business hours), Meeting Date/Time untouched
+  //   5) Meeting just rescheduled                 -> new Meeting time - 30min
+  //   6) Meeting upcoming (Pending/Rescheduled)    -> Meeting time - 30min
+  //   7) A "didn't connect" call attempt just logged, no Final Outcome yet -> +2hr business hours
+  //   8) Otherwise: whatever was already there / manually typed
   let nextFollowupDate = ((body.nextFollowupDate !== undefined ? body.nextFollowupDate : existing.nextFollowupDate) || null) as string | null;
   let nextFollowupTime = ((body.nextFollowupTime !== undefined ? body.nextFollowupTime : existing.nextFollowupTime) || null) as string | null;
-  const autoTriggered = triggerIndex !== null && isAutoFollowupTrigger(triggerStatus) && !finalOutcome;
-  const meetingReminderActive = !!(meetingDate && meetingTime);
-  if (meetingReminderActive) {
-    const reminder = subtractMinutes(meetingDate as string, meetingTime as string, 30);
-    nextFollowupDate = reminder.date;
-    nextFollowupTime = reminder.time;
-  } else if (autoTriggered) {
+
+  const trialUpcomingStatuses = [null, 'Pending', 'Rescheduled'];
+  const meetingUpcomingStatuses = [null, 'Pending', 'Rescheduled'];
+  const trialReminderActive = !!(trialDate && trialTime && trialUpcomingStatuses.includes(finalTrialStatus));
+  const meetingReminderActive = !!(meetingDate && meetingTime && meetingUpcomingStatuses.includes(finalConnectingStatus));
+  const attemptAutoTriggered = triggerIndex !== null && isAutoFollowupTrigger(triggerStatus) && !finalOutcome;
+
+  if (trialNotDoneTriggered && existing.trialDate && existing.trialTime) {
+    const anchor = fromIstWallClock(existing.trialDate as string, existing.trialTime as string);
+    const computed = computeBusinessHoursFollowup(anchor, 60);
+    nextFollowupDate = computed.date;
+    nextFollowupTime = computed.time;
+  } else if (trialRescheduled) {
+    const r = subtractMinutes(trialDate as string, trialTime as string, 30);
+    nextFollowupDate = r.date;
+    nextFollowupTime = r.time;
+  } else if (trialReminderActive) {
+    const r = subtractMinutes(trialDate as string, trialTime as string, 30);
+    nextFollowupDate = r.date;
+    nextFollowupTime = r.time;
+  } else if (notJoinedTriggered && existing.meetingDate && existing.meetingTime) {
+    const anchor = fromIstWallClock(existing.meetingDate as string, existing.meetingTime as string);
+    const computed = computeBusinessHoursFollowup(anchor, 60);
+    nextFollowupDate = computed.date;
+    nextFollowupTime = computed.time;
+  } else if (meetingRescheduled) {
+    const r = subtractMinutes(meetingDate as string, meetingTime as string, 30);
+    nextFollowupDate = r.date;
+    nextFollowupTime = r.time;
+  } else if (meetingReminderActive) {
+    const r = subtractMinutes(meetingDate as string, meetingTime as string, 30);
+    nextFollowupDate = r.date;
+    nextFollowupTime = r.time;
+  } else if (attemptAutoTriggered) {
     const computed = computeNextFollowup(nowUtc);
     nextFollowupDate = computed.date;
     nextFollowupTime = computed.time;
   }
 
+  // ---- Lifecycle / revoke bookkeeping (background audit fields only) ----
+  const lifecycle = computeLifecycle(
+    existing.qualificationStatus as string | null,
+    qualificationStatus,
+    finalOutcome,
+    nowUtc,
+    {
+      lifecycleStatus: existing.lifecycleStatus as string | null,
+      revokedTimestamp: existing.revokedTimestamp as string | null,
+      revokedReason: existing.revokedReason as string | null,
+    }
+  );
+
+  // Build the SET clause and its params together, from a single list, so the
+  // $N placeholder numbers can never drift out of sync with the values array
+  // (this is what broke Save once before — generating numbered placeholders
+  // by hand while also building a long values array by hand).
+  const updates: Array<[string, unknown]> = [
+    ['attempt1_status', attemptStatuses[0]], ['attempt1_date', attemptDates[0]], ['attempt1_time', attemptTimes[0]],
+    ['attempt2_status', attemptStatuses[1]], ['attempt2_date', attemptDates[1]], ['attempt2_time', attemptTimes[1]],
+    ['attempt3_status', attemptStatuses[2]], ['attempt3_date', attemptDates[2]], ['attempt3_time', attemptTimes[2]],
+    ['attempt4_status', attemptStatuses[3]], ['attempt4_date', attemptDates[3]], ['attempt4_time', attemptTimes[3]],
+    ['attempt5_status', attemptStatuses[4]], ['attempt5_date', attemptDates[4]], ['attempt5_time', attemptTimes[4]],
+    ['attempt6_status', attemptStatuses[5]], ['attempt6_date', attemptDates[5]], ['attempt6_time', attemptTimes[5]],
+    ['attempt7_status', attemptStatuses[6]], ['attempt7_date', attemptDates[6]], ['attempt7_time', attemptTimes[6]],
+    ['attempt8_status', attemptStatuses[7]], ['attempt8_date', attemptDates[7]], ['attempt8_time', attemptTimes[7]],
+    ['attempt9_status', attemptStatuses[8]], ['attempt9_date', attemptDates[8]], ['attempt9_time', attemptTimes[8]],
+    ['state', state], ['profession', profession], ['purpose', purpose],
+    ['total_attempts', totalAttempts], ['final_outcome', finalOutcome], ['qualification_status', qualificationStatus],
+    ['next_followup_date', nextFollowupDate], ['next_followup_time', nextFollowupTime], ['notes', notes],
+    ['course_start_timeline', courseStartTimeline], ['meeting_date', meetingDate], ['meeting_time', meetingTime],
+    ['preferred_mode', preferredMode],
+    ['handover_status', handoverStatus], ['assigned_vh_user_id', assignedVhUserId], ['assigned_counsellor_user_id', assignedCounsellorUserId],
+    ['counsellor_update', counsellorUpdate], ['owner_user_id', newOwnerUserId], ['status', pipelineStatus],
+    ['connecting_status', finalConnectingStatus], ['meeting_status', meetingStatus], ['meeting_attempt_count', meetingAttemptCount],
+    ['next_meeting_date', nextMeetingDate], ['next_meeting_time', nextMeetingTime],
+    ['trial_date', trialDate], ['trial_time', trialTime], ['trial_status', finalTrialStatus], ['trial_attempt_count', trialAttemptCount],
+    ['next_trial_date', nextTrialDate], ['next_trial_time', nextTrialTime],
+    ['admission_status', admissionStatus], ['admission_timestamp', admissionTimestamp],
+    ['lifecycle_status', lifecycle.lifecycleStatus], ['revoked_timestamp', lifecycle.revokedTimestamp], ['revoked_reason', lifecycle.revokedReason],
+    ['reminder_call1_status', reminderStatuses[0]], ['reminder_call1_date', reminderDates[0]], ['reminder_call1_time', reminderTimes[0]],
+    ['reminder_call2_status', reminderStatuses[1]], ['reminder_call2_date', reminderDates[1]], ['reminder_call2_time', reminderTimes[1]],
+    ['reminder_call3_status', reminderStatuses[2]], ['reminder_call3_date', reminderDates[2]], ['reminder_call3_time', reminderTimes[2]],
+  ];
+
+  const setClause = updates.map(([col], i) => `${col} = $${i + 1}`).join(', ') + ', updated_at = now()';
+  const values = updates.map(([, v]) => v);
+
+  // Safety net: this should be structurally impossible given the loop above builds
+  // both from the same array, but assert it anyway so a future edit can't silently
+  // reintroduce the old class of bug.
+  if (setClause.split('$').length - 1 !== values.length) {
+    throw new Error('Internal error: SQL placeholder count does not match params count.');
+  }
+
   await sql.query(
-    `UPDATE leads SET
-      attempt1_status = $1, attempt1_date = $2, attempt1_time = $3,
-      attempt2_status = $4, attempt2_date = $5, attempt2_time = $6,
-      attempt3_status = $7, attempt3_date = $8, attempt3_time = $9,
-      attempt4_status = $10, attempt4_date = $11, attempt4_time = $12,
-      attempt5_status = $13, attempt5_date = $14, attempt5_time = $15,
-      attempt6_status = $16, attempt6_date = $17, attempt6_time = $18,
-      attempt7_status = $19, attempt7_date = $20, attempt7_time = $21,
-      attempt8_status = $22, attempt8_date = $23, attempt8_time = $24,
-      attempt9_status = $25, attempt9_date = $26, attempt9_time = $27,
-      state = $28, profession = $29, purpose = $30,
-      total_attempts = $31, final_outcome = $32, qualification_status = $33,
-      next_followup_date = $34, next_followup_time = $35, notes = $36,
-      course_start_timeline = $37, meeting_date = $38, meeting_time = $39, preferred_mode = $40,
-      handover_status = $41, assigned_vh_user_id = $42, assigned_counsellor_user_id = $43,
-      counsellor_update = $44, owner_user_id = $45, status = $46, updated_at = now()
-    WHERE id = $47`,
-    [
-      attempt1Status, attempt1Date, attempt1Time, attempt2Status, attempt2Date, attempt2Time, attempt3Status, attempt3Date, attempt3Time, attempt4Status, attempt4Date, attempt4Time, attempt5Status, attempt5Date, attempt5Time, attempt6Status, attempt6Date, attempt6Time, attempt7Status, attempt7Date, attempt7Time, attempt8Status, attempt8Date, attempt8Time, attempt9Status, attempt9Date, attempt9Time,
-      state, profession, purpose,
-      totalAttempts, finalOutcome, qualificationStatus,
-      nextFollowupDate, nextFollowupTime, notes,
-      courseStartTimeline, meetingDate, meetingTime, preferredMode,
-      handoverStatus, assignedVhUserId, assignedCounsellorUserId,
-      counsellorUpdate, newOwnerUserId, pipelineStatus, leadId,
-    ]
+    `UPDATE leads SET ${setClause} WHERE id = $${values.length + 1}`,
+    [...values, leadId]
   );
 
   const updated = await fetchLead(leadId);
 
   await logAction(session, 'UPDATE_LEAD', 'lead', leadId, {
     fieldsChanged: Object.keys(body),
-    autoFollowupTriggered: autoTriggered,
+    autoFollowupTriggered: attemptAutoTriggered || meetingReminderActive || trialReminderActive || notJoinedTriggered || trialNotDoneTriggered,
     newPipelineStatus: pipelineStatus,
+    lifecycleStatus: lifecycle.lifecycleStatus,
   });
 
   return NextResponse.json({ lead: updated });

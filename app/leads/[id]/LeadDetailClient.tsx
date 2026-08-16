@@ -9,6 +9,7 @@ import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
 import {
   STATES, PROFESSIONS, PURPOSES, ATTEMPT_STATUSES, FINAL_OUTCOMES,
   COURSE_START_TIMELINES, PREFERRED_MODES, ATTEMPT_COUNT,
+  CONNECTING_STATUSES, TRIAL_STATUSES, ADMISSION_STATUSES, REMINDER_CALL_STATUSES, REMINDER_CALL_COUNT,
 } from '@/lib/masters';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
@@ -44,6 +45,22 @@ type Lead = {
   assignedCounsellorName: string | null;
   counsellorUpdate: string;
   updatedAt: string;
+  connectingStatus: string | null;
+  meetingStatus: string;
+  meetingAttemptCount: number;
+  nextMeetingDate: string | null;
+  nextMeetingTime: string | null;
+  trialDate: string | null;
+  trialTime: string | null;
+  trialStatus: string;
+  trialAttemptCount: number;
+  nextTrialDate: string | null;
+  nextTrialTime: string | null;
+  admissionStatus: string;
+  admissionTimestamp: string | null;
+  reminderCall1Status: string | null;
+  reminderCall2Status: string | null;
+  reminderCall3Status: string | null;
   [key: string]: unknown;
 };
 
@@ -106,6 +123,18 @@ export default function LeadDetailClient({
     f.counsellorUpdate = data.lead.counsellorUpdate || '';
     f.assignedVhUserId = data.lead.assignedVhUserId ? String(data.lead.assignedVhUserId) : '';
     f.assignedCounsellorUserId = data.lead.assignedCounsellorUserId ? String(data.lead.assignedCounsellorUserId) : '';
+    f.connectingStatus = data.lead.connectingStatus || '';
+    f.nextMeetingDate = data.lead.nextMeetingDate ? data.lead.nextMeetingDate.slice(0, 10) : '';
+    f.nextMeetingTime = data.lead.nextMeetingTime || '';
+    f.trialDate = data.lead.trialDate ? data.lead.trialDate.slice(0, 10) : '';
+    f.trialTime = data.lead.trialTime || '';
+    f.trialStatus = data.lead.trialStatus || '';
+    f.nextTrialDate = data.lead.nextTrialDate ? data.lead.nextTrialDate.slice(0, 10) : '';
+    f.nextTrialTime = data.lead.nextTrialTime || '';
+    f.admissionStatus = data.lead.admissionStatus || '';
+    for (let i = 1; i <= REMINDER_CALL_COUNT; i++) {
+      f[`reminderCall${i}Status`] = data.lead[`reminderCall${i}Status`] || '';
+    }
     setForm(f);
   }, [leadId]);
 
@@ -151,7 +180,14 @@ export default function LeadDetailClient({
   const canAssignVh = isAdmin;
   const canAssignCounsellor = isAdmin || isAssignedVh;
   const canEditCounsellorUpdate = isAdmin || isAssignedCounsellor;
-  const canEditAnything = canEditAgentFields || canAssignVh || canAssignCounsellor || canEditCounsellorUpdate;
+  const canEditConnecting = isAdmin || isAssignedCounsellor;
+  const canEditNextMeeting = isAdmin || isOwnerAgent || isAssignedCounsellor;
+  const canEditTrial = isAdmin || isAssignedCounsellor;
+  const canEditAdmission = isAdmin || isAssignedCounsellor;
+  const canEditReminderCalls = isAdmin || isAssignedCounsellor;
+  const canEditAnything =
+    canEditAgentFields || canAssignVh || canAssignCounsellor || canEditCounsellorUpdate ||
+    canEditConnecting || canEditNextMeeting || canEditTrial || canEditAdmission || canEditReminderCalls;
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -188,6 +224,28 @@ export default function LeadDetailClient({
     if (canEditCounsellorUpdate) {
       patch.counsellorUpdate = form.counsellorUpdate || '';
     }
+    if (canEditConnecting) {
+      patch.connectingStatus = form.connectingStatus || null;
+    }
+    if (canEditNextMeeting) {
+      patch.nextMeetingDate = form.nextMeetingDate || null;
+      patch.nextMeetingTime = form.nextMeetingTime || null;
+    }
+    if (canEditTrial) {
+      patch.trialDate = form.trialDate || null;
+      patch.trialTime = form.trialTime || null;
+      patch.trialStatus = form.trialStatus || null;
+      patch.nextTrialDate = form.nextTrialDate || null;
+      patch.nextTrialTime = form.nextTrialTime || null;
+    }
+    if (canEditAdmission) {
+      patch.admissionStatus = form.admissionStatus || null;
+    }
+    if (canEditReminderCalls) {
+      for (let i = 1; i <= REMINDER_CALL_COUNT; i++) {
+        patch[`reminderCall${i}Status`] = form[`reminderCall${i}Status`] || null;
+      }
+    }
 
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -201,6 +259,12 @@ export default function LeadDetailClient({
         return;
       }
       setSaved(true);
+      // Clear the transient reschedule inputs locally too, since the server
+      // folds them into Meeting/Trial Date+Time and blanks them out.
+      set('nextMeetingDate', '');
+      set('nextMeetingTime', '');
+      set('nextTrialDate', '');
+      set('nextTrialTime', '');
       load();
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -286,10 +350,10 @@ export default function LeadDetailClient({
           <TimeField label="Next Follow-up Time" value={form.nextFollowupTime} onChange={(v) => set('nextFollowupTime', v)} disabled={!canEditAgentFields} />
         </div>
         <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
-          Next Follow-up sets itself automatically: once a Meeting Date &amp; Time is scheduled below, it becomes
-          30 minutes before that meeting. Otherwise, if an attempt comes back Busy / No Answer / Switched Off /
-          No Incoming Call / Number not connecting, it&apos;s set to the next business-hours slot (Mon–Sat
-          10am–7pm). Manual values here are only used when neither rule applies.
+          Next Follow-up sets itself automatically, in this order: a Trial time (if one has been booked) beats a
+          Meeting time, which beats a plain call-attempt reminder. Missed a Meeting or Trial? It jumps to 1 hour
+          after the original time (business hours). Rescheduled? It becomes 30 minutes before the new time.
+          Manual values here are only used when none of those rules apply.
         </p>
         <TextAreaField label="Remarks" value={form.remarks} onChange={(v) => set('remarks', v)} disabled={!canEditAgentFields} />
       </div>
@@ -303,6 +367,76 @@ export default function LeadDetailClient({
           <TimeField label="Meeting Time" value={form.meetingTime} onChange={(v) => set('meetingTime', v)} disabled={!canEditAgentFields} />
           <SelectField label="Preferred Mode" value={form.preferredMode} options={PREFERRED_MODES} onChange={(v) => set('preferredMode', v)} disabled={!canEditAgentFields} />
         </div>
+      </div>
+
+      {/* Connecting / Meeting outcome */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Meeting outcome</h2>
+        <div style={gridStyle}>
+          <SelectField label="Connecting Status" value={form.connectingStatus} options={CONNECTING_STATUSES} onChange={(v) => set('connectingStatus', v)} disabled={!canEditConnecting} />
+          <div>
+            <div style={labelStyle}>Meeting Status</div>
+            <StatusBadge status={lead.meetingStatus} />
+          </div>
+          <Field label="Meeting Attempt Count" value={String(lead.meetingAttemptCount)} />
+        </div>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6, marginBottom: 10 }}>
+          Meeting Status updates itself from Connecting Status. If the lead didn&apos;t join, fill in Next Meeting
+          Date/Time below to reschedule — it becomes the new Meeting Date/Time automatically and clears itself.
+        </p>
+        <div style={gridStyle}>
+          <DateField label="Next Meeting Date" value={form.nextMeetingDate} onChange={(v) => set('nextMeetingDate', v)} disabled={!canEditNextMeeting} />
+          <TimeField label="Next Meeting Time" value={form.nextMeetingTime} onChange={(v) => set('nextMeetingTime', v)} disabled={!canEditNextMeeting} />
+        </div>
+      </div>
+
+      {/* Trial */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Trial</h2>
+        <div style={gridStyle}>
+          <DateField label="Trial Date" value={form.trialDate} onChange={(v) => set('trialDate', v)} disabled={!canEditTrial} />
+          <TimeField label="Trial Time" value={form.trialTime} onChange={(v) => set('trialTime', v)} disabled={!canEditTrial} />
+          <SelectField label="Trial Status" value={form.trialStatus} options={TRIAL_STATUSES} onChange={(v) => set('trialStatus', v)} disabled={!canEditTrial} />
+          <Field label="Trial Attempt Count" value={String(lead.trialAttemptCount)} />
+        </div>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6, marginBottom: 10 }}>
+          Trial works just like Meeting: fill in Next Trial Date/Time to reschedule.
+        </p>
+        <div style={gridStyle}>
+          <DateField label="Next Trial Date" value={form.nextTrialDate} onChange={(v) => set('nextTrialDate', v)} disabled={!canEditTrial} />
+          <TimeField label="Next Trial Time" value={form.nextTrialTime} onChange={(v) => set('nextTrialTime', v)} disabled={!canEditTrial} />
+        </div>
+      </div>
+
+      {/* Admission */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Admission</h2>
+        <div style={gridStyle}>
+          <SelectField label="Admission Status" value={form.admissionStatus} options={ADMISSION_STATUSES} onChange={(v) => set('admissionStatus', v)} disabled={!canEditAdmission} />
+          <Field label="Admission Timestamp" value={formatTimestampIST(lead.admissionTimestamp)} />
+        </div>
+      </div>
+
+      {/* Reminder calls */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Reminder calls (to get the lead to join the meeting)</h2>
+        {Array.from({ length: REMINDER_CALL_COUNT }, (_, idx) => idx + 1).map((i) => (
+          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ width: 110, fontSize: 13, color: '#555' }}>Reminder Call {i}</div>
+            <select
+              value={form[`reminderCall${i}Status`] || ''}
+              onChange={(e) => set(`reminderCall${i}Status`, e.target.value)}
+              disabled={!canEditReminderCalls}
+              style={inputStyle}
+            >
+              <option value="">—</option>
+              {REMINDER_CALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <div style={{ fontSize: 13, color: '#777' }}>
+              {formatDateTime(lead[`reminderCall${i}Date`] as string, lead[`reminderCall${i}Time`] as string) || 'not logged yet'}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Handover / assignment */}
@@ -335,9 +469,8 @@ export default function LeadDetailClient({
         </div>
         <p style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 4 }}>
           Handover Status updates itself automatically as the lead moves through Qualified → VH Assigned →
-          Counsellor Assigned (more stages come in Stage 3, once meeting/trial/admission tracking is added).
-          Counsellor / Meeting Update below is a free-text note the counsellor keeps updated by hand — the two
-          are related but not the same thing.
+          Counsellor Assigned. Counsellor / Meeting Update below is a free-text note the counsellor keeps updated
+          by hand — the two are related but not the same thing.
         </p>
         <TextAreaField label="Counsellor / Meeting Update" value={form.counsellorUpdate} onChange={(v) => set('counsellorUpdate', v)} disabled={!canEditCounsellorUpdate} />
       </div>

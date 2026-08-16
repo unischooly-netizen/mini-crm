@@ -4,7 +4,9 @@
 // connect" statuses, the next follow-up is set to 2 hours later — but
 // clamped into working hours: Mon-Sat 10:00-19:00 IST, Sunday off. If the
 // +2h lands outside that window (too late, too early, or on a Sunday), it
-// rolls forward to the next working day at 10:00.
+// rolls forward to the next working day at 10:00. The same clamped-offset
+// logic is reused in Stage 3 for the "missed meeting"/"missed trial"
+// +1 hour follow-up rule, just with a different anchor time and offset.
 //
 // All arithmetic happens in an "IST-shifted" Date (a Date object whose UTC
 // getters read out IST wall-clock values), which avoids needing a timezone
@@ -43,13 +45,14 @@ export function toIstDateTimeParts(utcDate: Date): { date: string; time: string 
 }
 
 /**
- * Given the moment a call attempt was logged (as a UTC Date), returns the
- * next-follow-up date/time (IST date + 24h time string) per the business
- * hours rule above.
+ * Core business-hours calculation: given an anchor UTC instant, add
+ * offsetMinutes, then clamp the result into Mon-Sat 10:00-19:00 IST
+ * (rolling forward to the next working day at 10:00 if it falls outside
+ * that window, or on a Sunday).
  */
-export function computeNextFollowup(triggerUtc: Date): { date: string; time: string } {
-  let ist = toIstShifted(triggerUtc);
-  ist = new Date(ist.getTime() + 2 * 60 * 60 * 1000); // +2 hours
+export function computeBusinessHoursFollowup(anchorUtc: Date, offsetMinutes: number): { date: string; time: string } {
+  let ist = toIstShifted(anchorUtc);
+  ist = new Date(ist.getTime() + offsetMinutes * 60 * 1000);
 
   for (let guard = 0; guard < 14; guard++) {
     const dayOfWeek = ist.getUTCDay(); // 0 = Sunday
@@ -78,6 +81,15 @@ export function computeNextFollowup(triggerUtc: Date): { date: string; time: str
 }
 
 /**
+ * Given the moment a call attempt was logged (as a UTC Date), returns the
+ * next-follow-up date/time (IST date + 24h time string) per the business
+ * hours rule above. (Stage 2 rule: +2 hours.)
+ */
+export function computeNextFollowup(triggerUtc: Date): { date: string; time: string } {
+  return computeBusinessHoursFollowup(triggerUtc, 120);
+}
+
+/**
  * Subtracts N minutes from a plain wall-clock date+time (no timezone
  * conversion — both input and output are just IST-local values as typed/
  * stored, e.g. for "30 minutes before this meeting").
@@ -93,4 +105,15 @@ export function subtractMinutes(dateStr: string, timeStr: string, minutes: numbe
   const nhh = String(dt.getUTCHours()).padStart(2, '0');
   const nmm = String(dt.getUTCMinutes()).padStart(2, '0');
   return { date: `${ny}-${nm}-${nd}`, time: `${nhh}:${nmm}` };
+}
+
+/**
+ * Converts a stored wall-clock IST date+time (e.g. Meeting Date/Time, Trial
+ * Date/Time as typed by a counsellor) into a real UTC Date instant, so it
+ * can be fed into computeBusinessHoursFollowup as an anchor.
+ */
+export function fromIstWallClock(dateStr: string, timeStr: string): Date {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, hh || 0, mm || 0) - IST_OFFSET_MS);
 }

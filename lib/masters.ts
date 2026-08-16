@@ -72,9 +72,7 @@ export const PREFERRED_MODES: string[] = [
   'Phone Call', 'Teams Meet', 'Whatsapp call', 'Google Meet',
 ];
 
-// Handover Status stages we actively set in Stage 2. More stages (Meeting
-// Scheduled onward) get added in Stage 3 once meeting/trial/admission
-// tracking is built.
+// Handover Status stages we actively set in Stage 2.
 export const HANDOVER_STATUSES_STAGE2: string[] = [
   'Not Ready', 'Qualified - Pending VH', 'VH Assigned', 'Counsellor Assigned',
 ];
@@ -87,9 +85,60 @@ export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
 // Fields a Pre-Sales Agent is allowed to edit directly on their own leads.
 // Everything else on the lead is system-managed or managed by another role.
+// Next Meeting Date/Time is included because either the owning agent or the
+// assigned Sales Counsellor may be the one who re-books a missed meeting.
 export const AGENT_EDITABLE_FIELDS = [
   'state', 'profession', 'purpose',
   ...Array.from({ length: ATTEMPT_COUNT }, (_, i) => `attempt${i + 1}Status`),
   'finalOutcome', 'remarks', 'courseStartTimeline', 'meetingDate', 'meetingTime', 'preferredMode',
   'nextFollowupDate', 'nextFollowupTime', // only actually applied when not auto-triggered — enforced in lib/leadLogic.ts
+  'nextMeetingDate', 'nextMeetingTime',
+] as const;
+
+// ---------------------------------------------------------------------------
+// Stage 3: Connecting / Meeting / Trial / Admission tracking
+// ---------------------------------------------------------------------------
+
+// "Joining Status" in the sheet, renamed to "Connecting Status" per request —
+// what happened when the counsellor tried to run the scheduled meeting.
+export const CONNECTING_STATUSES: string[] = ['Pending', 'Joined', 'Not Joined', 'Rescheduled', 'Cancelled'];
+
+// Meeting Status is auto-derived from Connecting Status — never edited directly.
+export const MEETING_STATUSES: string[] = ['Pending', 'Completed', 'Not Completed', 'Rescheduled', 'Cancelled'];
+
+export const CONNECTING_TO_MEETING_STATUS: Record<string, string> = {
+  'Pending': 'Pending',
+  'Joined': 'Completed',
+  'Not Joined': 'Not Completed',
+  'Rescheduled': 'Rescheduled',
+  'Cancelled': 'Cancelled',
+};
+
+// Connecting Status values that mean "this meeting attempt has concluded" —
+// these are what increment Meeting Attempt Count.
+export const MEETING_CONCLUDING_STATUSES: string[] = ['Joined', 'Not Joined', 'Cancelled'];
+
+export const TRIAL_STATUSES: string[] = [
+  'Pending', 'Trial Done', 'Trial Not Done', 'Rescheduled', 'Trial Sceduled but not done',
+];
+
+// Trial Status values that mean "this trial attempt has concluded" — these
+// are what increment Trial Attempt Count.
+export const TRIAL_CONCLUDING_STATUSES: string[] = ['Trial Done', 'Trial Not Done'];
+
+export const ADMISSION_STATUSES: string[] = ['Pending', 'On Hold', 'Closed Won', 'Closed Lost'];
+
+export const REMINDER_CALL_STATUSES: string[] = ['Contacted', 'No Answer', 'Call Back Requested'];
+
+export const REMINDER_CALL_COUNT = 3;
+
+export const LIFECYCLE_STATUSES: string[] = ['Active Qualified', 'Revoked'];
+
+// Fields the assigned Sales Counsellor (and Admin) can edit directly.
+export const COUNSELLOR_EDITABLE_FIELDS = [
+  'connectingStatus', 'nextMeetingDate', 'nextMeetingTime',
+  'trialDate', 'trialTime', 'trialStatus', 'nextTrialDate', 'nextTrialTime',
+  'admissionStatus',
+  ...Array.from({ length: REMINDER_CALL_COUNT }, (_, i) => `reminderCall${i + 1}Status`),
+  'counsellorUpdate',
 ] as const;

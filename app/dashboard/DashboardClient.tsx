@@ -72,10 +72,13 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <BrandHeader subtitle={`My Leads — ${agentName}`} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/qualified-leads" style={secondaryButtonStyle}>Qualified Leads</Link>
-          <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
-        </div>
+        <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <NavTab active>Leads</NavTab>
+        <Link href="/qualified-leads" style={navLinkStyle}>Qualified Leads</Link>
+        <Link href="/qualified-leads?view=reschedule" style={navLinkStyle}>Reschedule Pending</Link>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -126,6 +129,24 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   );
 }
 
+function NavTab({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        padding: '6px 14px',
+        border: '1px solid #ccc',
+        borderRadius: 4,
+        background: active ? '#111' : '#fff',
+        color: active ? '#fff' : '#111',
+        fontSize: 14,
+        display: 'inline-block',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -151,4 +172,14 @@ const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #ccc',
   borderRadius: 4,
   cursor: 'pointer',
+};
+
+const navLinkStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  border: '1px solid #ccc',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#111',
+  fontSize: 14,
+  textDecoration: 'none',
 };
