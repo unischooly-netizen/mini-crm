@@ -1,5 +1,7 @@
 'use client';
 
+import { BrandHeader } from '@/app/components/BrandHeader';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -106,7 +108,7 @@ export default function AdminClient({ adminName }: { adminName: string }) {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Mini CRM — Admin ({adminName})</h1>
+        <BrandHeader subtitle={`Admin (${adminName})`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
 

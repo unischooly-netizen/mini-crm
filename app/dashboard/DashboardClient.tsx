@@ -1,5 +1,7 @@
 'use client';
 
+import { BrandHeader } from '@/app/components/BrandHeader';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -61,7 +63,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>My Leads — {agentName}</h1>
+        <BrandHeader subtitle={`My Leads — ${agentName}`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
 

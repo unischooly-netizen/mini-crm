@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BrandHeader } from '@/app/components/BrandHeader';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function LoginPage() {
 
   return (
     <div style={{ maxWidth: 360, margin: '80px auto', fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 20, marginBottom: 24 }}>Mini CRM — Login</h1>
+      <div style={{ marginBottom: 24 }}><BrandHeader subtitle="Login" /></div>
       <form onSubmit={handleSubmit}>
         <label style={{ display: 'block', marginBottom: 12 }}>
           Name

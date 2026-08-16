@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mini CRM",
+  title: "TLS - Presales CRM",
   description: "Simple lead calling dashboard",
 };
 
