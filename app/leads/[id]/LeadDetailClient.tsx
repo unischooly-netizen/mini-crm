@@ -83,6 +83,7 @@ export default function LeadDetailClient({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Local editable field state, seeded from the fetched lead.
   const [form, setForm] = useState<Record<string, string>>({});
@@ -155,6 +156,29 @@ export default function LeadDetailClient({
     await fetch('/api/logout', { method: 'POST' });
     router.push('/login');
     router.refresh();
+  }
+
+  async function handleDelete() {
+    if (!lead) return;
+    const ok = window.confirm(
+      `Permanently delete lead ${lead.leadCode} (${lead.name})? This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || `Could not delete this lead (server said: ${res.status}).`);
+        return;
+      }
+      router.push('/admin');
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (error) {
@@ -278,7 +302,14 @@ export default function LeadDetailClient({
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <BrandHeader subtitle={`${lead.leadCode} — ${lead.name}`} />
-        <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {isAdmin && (
+            <button onClick={handleDelete} disabled={deleting} style={dangerButtonStyle}>
+              {deleting ? 'Deleting…' : 'Delete lead'}
+            </button>
+          )}
+          <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        </div>
       </div>
       <button onClick={() => router.back()} style={backLinkStyle}>← Back</button>
 
@@ -375,23 +406,25 @@ export default function LeadDetailClient({
       {/* Reminder calls */}
       <div style={cardStyle}>
         <h2 style={h2Style}>Reminder calls (to get the lead to join the meeting)</h2>
-        {Array.from({ length: REMINDER_CALL_COUNT }, (_, idx) => idx + 1).map((i) => (
-          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ width: 110, fontSize: 13, color: '#555' }}>Reminder Call {i}</div>
-            <select
-              value={form[`reminderCall${i}Status`] || ''}
-              onChange={(e) => set(`reminderCall${i}Status`, e.target.value)}
-              disabled={!canEditReminderCalls}
-              style={inputStyle}
-            >
-              <option value="">—</option>
-              {REMINDER_CALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <div style={{ fontSize: 13, color: '#777' }}>
-              {formatDateTime(lead[`reminderCall${i}Date`] as string, lead[`reminderCall${i}Time`] as string) || 'not logged yet'}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '4px 24px' }}>
+          {Array.from({ length: REMINDER_CALL_COUNT }, (_, idx) => idx + 1).map((i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+              <div style={{ width: 100, fontSize: 13, color: '#555', flexShrink: 0 }}>Reminder Call {i}</div>
+              <select
+                value={form[`reminderCall${i}Status`] || ''}
+                onChange={(e) => set(`reminderCall${i}Status`, e.target.value)}
+                disabled={!canEditReminderCalls}
+                style={{ ...inputStyle, width: 170, flexShrink: 0 }}
+              >
+                <option value="">—</option>
+                {REMINDER_CALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <div style={{ fontSize: 12, color: '#777', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {formatDateTime(lead[`reminderCall${i}Date`] as string, lead[`reminderCall${i}Time`] as string) || 'not logged yet'}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Connecting / Meeting outcome */}
@@ -622,5 +655,14 @@ const backLinkStyle: React.CSSProperties = {
   padding: 0,
   color: '#1a56c4',
   textDecoration: 'underline',
+  cursor: 'pointer',
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  background: '#fdeaea',
+  color: '#b3261e',
+  border: '1px solid #f3b8b8',
+  borderRadius: 4,
   cursor: 'pointer',
 };

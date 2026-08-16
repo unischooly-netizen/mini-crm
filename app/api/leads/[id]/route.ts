@@ -474,3 +474,36 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: `Could not save changes: ${message}` }, { status: 500 });
   }
 }
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Not logged in.' }, { status: 401 });
+  if (session.role !== 'admin') {
+    return NextResponse.json({ error: 'Only Admin can delete a lead.' }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const leadId = Number(id);
+  if (!Number.isInteger(leadId)) return NextResponse.json({ error: 'Invalid lead id.' }, { status: 400 });
+
+  const existing = await fetchLead(leadId);
+  if (!existing) return NextResponse.json({ error: 'Lead not found.' }, { status: 404 });
+
+  try {
+    await sql.query(`DELETE FROM leads WHERE id = $1`, [leadId]);
+  } catch (err) {
+    console.error('DELETE /api/leads/[id] failed:', err);
+    const message = err instanceof Error ? err.message : 'Unknown server error.';
+    return NextResponse.json({ error: `Could not delete lead: ${message}` }, { status: 500 });
+  }
+
+  // Logged with the lead's identifying details captured beforehand, since
+  // the row itself is gone by the time anyone reads this log entry.
+  await logAction(session, 'DELETE_LEAD', 'lead', leadId, {
+    leadCode: existing.leadCode,
+    name: existing.name,
+    mobile: existing.mobile,
+  });
+
+  return NextResponse.json({ ok: true });
+}

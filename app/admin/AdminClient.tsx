@@ -59,7 +59,7 @@ type AuditEntry = {
   createdAt: string;
 };
 
-type Tab = 'leads' | 'upload' | 'rules' | 'users' | 'audit';
+type Tab = 'leads' | 'upload' | 'rules' | 'users' | 'audit' | 'data';
 
 export default function AdminClient({ adminName, role }: { adminName: string; role: Role }) {
   const router = useRouter();
@@ -127,6 +127,9 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         {role === 'admin' && (
           <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>Audit Log</TabButton>
         )}
+        {(role === 'admin' || role === 'data_team') && (
+          <TabButton active={tab === 'data'} onClick={() => setTab('data')}>Data Tools</TabButton>
+        )}
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
         {agents.length > 0 && (
           <select
@@ -160,6 +163,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         />
       )}
       {tab === 'audit' && <AuditTab entries={audit} onRefresh={loadAudit} />}
+      {tab === 'data' && <DataToolsTab role={role} />}
     </div>
   );
 }
@@ -649,6 +653,151 @@ export function followupColor(date: string | null | undefined, time: string | nu
     return target.getTime() < now.getTime() ? '#b3261e' : '#a15c00';
   }
   return '#0a7a2f';
+}
+
+function DataToolsTab({ role }: { role: Role }) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [preview, setPreview] = useState<{ leadCount: number; auditCount: number } | null>(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState('');
+  const [clearError, setClearError] = useState('');
+
+  const validRange = !!from && !!to && from <= to;
+
+  async function runPreview() {
+    setPreviewError('');
+    setPreview(null);
+    setClearResult('');
+    if (!validRange) {
+      setPreviewError('Pick a valid From and To date first (From must not be after To).');
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const res = await fetch(`/api/admin/clear-data?from=${from}&to=${to}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPreviewError(data.error || `Could not check this range (server said: ${res.status}).`);
+        return;
+      }
+      setPreview(data);
+    } catch {
+      setPreviewError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function runClear() {
+    setClearError('');
+    setClearResult('');
+    if (confirmText !== 'DELETE') return;
+    setClearing(true);
+    try {
+      const res = await fetch('/api/admin/clear-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, confirm: confirmText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setClearError(data.error || `Could not clear this range (server said: ${res.status}).`);
+        return;
+      }
+      setClearResult(`Deleted ${data.leadCount} lead(s) and ${data.auditCount} audit log entr${data.auditCount === 1 ? 'y' : 'ies'} assigned/logged between ${from} and ${to}.`);
+      setPreview(null);
+      setConfirmText('');
+    } catch {
+      setClearError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: 16, marginTop: 0 }}>Export &amp; data cleanup</h2>
+      <p style={{ fontSize: 13, color: '#666', marginTop: -4 }}>
+        Export downloads a CSV (opens directly in Excel) for leads assigned, or audit log entries logged, within the
+        date range below. Leads are matched by Assigned Date; audit log entries by when they were logged.
+      </p>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
+        <label>
+          <div style={{ fontSize: 12, color: '#777', marginBottom: 3 }}>From</div>
+          <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPreview(null); setClearResult(''); }} style={inputStyle} />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, color: '#777', marginBottom: 3 }}>To</div>
+          <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreview(null); setClearResult(''); }} style={inputStyle} />
+        </label>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        <a
+          href={validRange ? `/api/admin/export?type=leads&from=${from}&to=${to}` : undefined}
+          onClick={(e) => { if (!validRange) e.preventDefault(); }}
+          style={{ ...secondaryButtonStyle, textDecoration: 'none', opacity: validRange ? 1 : 0.5, pointerEvents: validRange ? 'auto' : 'none' }}
+        >
+          Export Leads (CSV)
+        </a>
+        <a
+          href={validRange ? `/api/admin/export?type=audit&from=${from}&to=${to}` : undefined}
+          onClick={(e) => { if (!validRange) e.preventDefault(); }}
+          style={{ ...secondaryButtonStyle, textDecoration: 'none', opacity: validRange ? 1 : 0.5, pointerEvents: validRange ? 'auto' : 'none' }}
+        >
+          Export Audit Log (CSV)
+        </a>
+      </div>
+
+      {role === 'admin' && (
+        <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>
+          <h3 style={{ fontSize: 14, marginTop: 0, color: '#b3261e' }}>Clear data in this range</h3>
+          <p style={{ fontSize: 13, color: '#666' }}>
+            Permanently deletes every lead assigned, and every audit log entry logged, within the range above.
+            This cannot be undone — export first and check the file before doing this.
+          </p>
+
+          <button onClick={runPreview} disabled={!validRange || previewing} style={secondaryButtonStyle}>
+            {previewing ? 'Checking…' : 'Check how many rows this would delete'}
+          </button>
+          {previewError && <p style={{ color: 'crimson', fontSize: 13 }}>{previewError}</p>}
+
+          {preview && (
+            <div style={{ marginTop: 12, padding: 12, background: '#fdeaea', borderRadius: 4 }}>
+              <p style={{ margin: '0 0 10px 0', fontSize: 14 }}>
+                This will permanently delete <strong>{preview.leadCount} lead(s)</strong> and{' '}
+                <strong>{preview.auditCount} audit log entr{preview.auditCount === 1 ? 'y' : 'ies'}</strong>.
+              </p>
+              <label style={{ display: 'block', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 3 }}>Type DELETE to confirm</div>
+                <input
+                  type="text"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  style={inputStyle}
+                  placeholder="DELETE"
+                />
+              </label>
+              <button
+                onClick={runClear}
+                disabled={confirmText !== 'DELETE' || clearing}
+                style={{ ...primaryButtonStyle, background: confirmText === 'DELETE' ? '#b3261e' : '#ccc' }}
+              >
+                {clearing ? 'Deleting…' : `Permanently delete these ${preview.leadCount} lead(s)`}
+              </button>
+            </div>
+          )}
+          {clearError && <p style={{ color: 'crimson', fontSize: 13 }}>{clearError}</p>}
+          {clearResult && <p style={{ color: '#0a7a2f', fontSize: 13 }}>{clearResult}</p>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AuditTab({ entries, onRefresh }: { entries: AuditEntry[]; onRefresh: () => void }) {
