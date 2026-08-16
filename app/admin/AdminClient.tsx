@@ -113,7 +113,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
   const agents = users.filter((u) => u.role === 'presales_agent');
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <BrandHeader subtitle={`Admin (${adminName})`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>

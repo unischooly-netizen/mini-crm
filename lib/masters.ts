@@ -72,9 +72,10 @@ export const PREFERRED_MODES: string[] = [
   'Phone Call', 'Teams Meet', 'Whatsapp call', 'Google Meet',
 ];
 
-// Handover Status stages we actively set in Stage 2.
+// Handover Status stages the app can set (see lib/leadLogic.ts computeHandoverStatus).
 export const HANDOVER_STATUSES_STAGE2: string[] = [
   'Not Ready', 'Qualified - Pending VH', 'VH Assigned', 'Counsellor Assigned',
+  'Meeting Completed', 'Trial Completed', 'Admission Closed',
 ];
 
 export const ATTEMPT_COUNT = 9;
@@ -93,6 +94,7 @@ export const AGENT_EDITABLE_FIELDS = [
   'finalOutcome', 'remarks', 'courseStartTimeline', 'meetingDate', 'meetingTime', 'preferredMode',
   'nextFollowupDate', 'nextFollowupTime', // only actually applied when not auto-triggered — enforced in lib/leadLogic.ts
   'nextMeetingDate', 'nextMeetingTime',
+  'connectingStatus', // Pre-Sales Agent can also mark whether the lead joined the meeting, same as the Sales Counsellor
 ] as const;
 
 // ---------------------------------------------------------------------------

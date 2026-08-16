@@ -34,28 +34,35 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   const [search, setSearch] = useState('');
   const [loadError, setLoadError] = useState('');
 
-  const loadLeads = useCallback(async () => {
-    setLoading(true);
+  const loadLeads = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError('');
     try {
       const res = await fetch('/api/leads');
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setLoadError(data.error || `Could not load leads (server said: ${res.status}).`);
-        setLeads([]);
+        if (!silent) setLeads([]);
         return;
       }
       setLeads(data.leads || []);
     } catch {
-      setLoadError('Could not reach the server. Check your connection and try again.');
-      setLeads([]);
+      if (!silent) {
+        setLoadError('Could not reach the server. Check your connection and try again.');
+        setLeads([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadLeads();
+  }, [loadLeads]);
+
+  useEffect(() => {
+    const interval = setInterval(() => loadLeads(true), 25000);
+    return () => clearInterval(interval);
   }, [loadLeads]);
 
   async function handleLogout() {
@@ -82,7 +89,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   }, {});
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <BrandHeader subtitle={`My Leads — ${agentName}`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>

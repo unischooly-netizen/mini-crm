@@ -108,6 +108,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
 
+  try {
+
   const ownerUserId = existing.ownerUserId as number | null;
   const assignedVhUserId0 = existing.assignedVhUserId as number | null;
   const assignedCounsellorUserId0 = existing.assignedCounsellorUserId as number | null;
@@ -203,7 +205,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
   const qualificationStatus = computeQualificationStatus(finalOutcome);
   const pipelineStatus = computePipelineStatus(totalAttempts, qualificationStatus);
-  const handoverStatus = computeHandoverStatus(qualificationStatus, assignedVhUserId, assignedCounsellorUserId);
 
   // ---- Meeting / Connecting Status cascade ----
   // Next Meeting Date/Time is a *transient* reschedule input: when both are
@@ -221,7 +222,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let meetingTime = ((body.meetingTime !== undefined ? body.meetingTime : existing.meetingTime) || null) as string | null;
   let nextMeetingDate: string | null = nextMeetingDateInput;
   let nextMeetingTime: string | null = nextMeetingTimeInput;
-  let finalConnectingStatus = (connectingStatusRaw !== undefined ? connectingStatusRaw : (existing.connectingStatus as string | null)) || null;
+  // Connecting Status defaults to "Pending" rather than blank once a
+  // meeting exists — matches Meeting/Trial/Admission Status, which all
+  // default to Pending too.
+  let finalConnectingStatus =
+    (connectingStatusRaw !== undefined ? connectingStatusRaw : (existing.connectingStatus as string | null)) || 'Pending';
 
   const notJoinedTriggered = connectingStatusChanged && connectingStatusRaw === 'Not Joined';
 
@@ -257,7 +262,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let trialTime = ((body.trialTime !== undefined ? body.trialTime : existing.trialTime) || null) as string | null;
   let nextTrialDate: string | null = nextTrialDateInput;
   let nextTrialTime: string | null = nextTrialTimeInput;
-  let finalTrialStatus = (trialStatusRaw !== undefined ? trialStatusRaw : (existing.trialStatus as string | null)) || null;
+  let finalTrialStatus = (trialStatusRaw !== undefined ? trialStatusRaw : (existing.trialStatus as string | null)) || 'Pending';
 
   const trialNotDoneTriggered = trialStatusChanged && trialStatusRaw === 'Trial Not Done';
 
@@ -279,8 +284,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // ---- Admission ----
   const admissionStatusRaw = body.admissionStatus !== undefined ? (body.admissionStatus as string | null) : undefined;
   const admissionStatusChanged = admissionStatusRaw !== undefined && admissionStatusRaw !== existing.admissionStatus;
-  const admissionStatus = (admissionStatusRaw !== undefined ? admissionStatusRaw : (existing.admissionStatus as string | null)) || null;
+  const admissionStatus = (admissionStatusRaw !== undefined ? admissionStatusRaw : (existing.admissionStatus as string | null)) || 'Pending';
   const admissionTimestamp = admissionStatusChanged ? nowUtc.toISOString() : (existing.admissionTimestamp as string | null);
+
+  const handoverStatus = computeHandoverStatus(
+    qualificationStatus, assignedVhUserId, assignedCounsellorUserId,
+    finalConnectingStatus, finalTrialStatus, admissionStatus
+  );
 
   // ---- Reminder Calls 1-3 (same auto-stamp pattern as call attempts) ----
   const reminderStatuses: (string | null)[] = [];
@@ -419,4 +429,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
 
   return NextResponse.json({ lead: updated });
+  } catch (err) {
+    // Surface the real problem instead of a silent generic crash — this is
+    // exactly the failure mode that broke Save once before (client saw a
+    // non-JSON 500 and had nothing useful to show the user).
+    console.error('PATCH /api/leads/[id] failed:', err);
+    const message = err instanceof Error ? err.message : 'Unknown server error.';
+    return NextResponse.json({ error: `Could not save changes: ${message}` }, { status: 500 });
+  }
 }

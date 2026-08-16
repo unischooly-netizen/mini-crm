@@ -23,11 +23,22 @@ export function computePipelineStatus(totalAttempts: number, qualificationStatus
   return qualificationStatus; // 'Qualified' | 'Not Qualified' | 'Follow-up Needed'
 }
 
+// Handover Status is the single at-a-glance "how far along is this lead"
+// indicator. It progresses: Not Ready -> Qualified - Pending VH -> VH
+// Assigned -> Counsellor Assigned -> Meeting Completed (once they actually
+// joined) -> Trial Completed -> Admission Closed. Whichever stage the lead
+// has reached furthest wins — it never moves backwards on its own.
 export function computeHandoverStatus(
   qualificationStatus: string,
   assignedVhUserId: number | null,
-  assignedCounsellorUserId: number | null
+  assignedCounsellorUserId: number | null,
+  connectingStatus?: string | null,
+  trialStatus?: string | null,
+  admissionStatus?: string | null
 ): string {
+  if (admissionStatus === 'Closed Won' || admissionStatus === 'Closed Lost') return 'Admission Closed';
+  if (trialStatus === 'Trial Done') return 'Trial Completed';
+  if (connectingStatus === 'Joined') return 'Meeting Completed';
   if (assignedCounsellorUserId) return 'Counsellor Assigned';
   if (assignedVhUserId) return 'VH Assigned';
   if (qualificationStatus === 'Qualified') return 'Qualified - Pending VH';

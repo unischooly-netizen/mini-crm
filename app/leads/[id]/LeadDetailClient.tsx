@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { formatDate, formatDateTime, formatTimestampIST } from '@/lib/format';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
@@ -65,14 +64,6 @@ type Lead = {
 };
 
 type UserOption = { id: number; name: string; role: Role };
-
-const backPathFor: Record<Role, string> = {
-  admin: '/admin',
-  presales_agent: '/dashboard',
-  vertical_head: '/qualified-leads',
-  sales_counsellor: '/qualified-leads',
-  data_team: '/admin',
-};
 
 export default function LeadDetailClient({
   leadId,
@@ -170,7 +161,7 @@ export default function LeadDetailClient({
     return (
       <div style={{ maxWidth: 700, margin: '60px auto', fontFamily: 'system-ui, sans-serif', textAlign: 'center' }}>
         <p style={{ color: 'crimson' }}>{error}</p>
-        <Link href={backPathFor[role]}>← Back</Link>
+        <button onClick={() => router.back()} style={backLinkStyle}>← Back</button>
       </div>
     );
   }
@@ -282,12 +273,12 @@ export default function LeadDetailClient({
   }
 
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <BrandHeader subtitle={`${lead.leadCode} — ${lead.name}`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
-      <Link href={backPathFor[role]} style={{ fontSize: 14 }}>← Back</Link>
+      <button onClick={() => router.back()} style={backLinkStyle}>← Back</button>
 
       {/* Summary */}
       <div style={{ ...cardStyle, marginTop: 16 }}>
@@ -377,54 +368,6 @@ export default function LeadDetailClient({
         </div>
       </div>
 
-      {/* Connecting / Meeting outcome */}
-      <div style={cardStyle}>
-        <h2 style={h2Style}>Meeting outcome</h2>
-        <div style={gridStyle}>
-          <SelectField label="Connecting Status" value={form.connectingStatus} options={CONNECTING_STATUSES} onChange={(v) => set('connectingStatus', v)} disabled={!canEditConnecting} />
-          <div>
-            <div style={labelStyle}>Meeting Status</div>
-            <StatusBadge status={lead.meetingStatus} />
-          </div>
-          <Field label="Meeting Attempt Count" value={String(lead.meetingAttemptCount)} />
-        </div>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 6, marginBottom: 10 }}>
-          Meeting Status updates itself from Connecting Status. If the lead didn&apos;t join, fill in Next Meeting
-          Date/Time below to reschedule — it becomes the new Meeting Date/Time automatically and clears itself.
-        </p>
-        <div style={gridStyle}>
-          <DateField label="Next Meeting Date" value={form.nextMeetingDate} onChange={(v) => set('nextMeetingDate', v)} disabled={!canEditNextMeeting} />
-          <TimeField label="Next Meeting Time" value={form.nextMeetingTime} onChange={(v) => set('nextMeetingTime', v)} disabled={!canEditNextMeeting} />
-        </div>
-      </div>
-
-      {/* Trial */}
-      <div style={cardStyle}>
-        <h2 style={h2Style}>Trial</h2>
-        <div style={gridStyle}>
-          <DateField label="Trial Date" value={form.trialDate} onChange={(v) => set('trialDate', v)} disabled={!canEditTrial} />
-          <TimeField label="Trial Time" value={form.trialTime} onChange={(v) => set('trialTime', v)} disabled={!canEditTrial} />
-          <SelectField label="Trial Status" value={form.trialStatus} options={TRIAL_STATUSES} onChange={(v) => set('trialStatus', v)} disabled={!canEditTrial} />
-          <Field label="Trial Attempt Count" value={String(lead.trialAttemptCount)} />
-        </div>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 6, marginBottom: 10 }}>
-          Trial works just like Meeting: fill in Next Trial Date/Time to reschedule.
-        </p>
-        <div style={gridStyle}>
-          <DateField label="Next Trial Date" value={form.nextTrialDate} onChange={(v) => set('nextTrialDate', v)} disabled={!canEditTrial} />
-          <TimeField label="Next Trial Time" value={form.nextTrialTime} onChange={(v) => set('nextTrialTime', v)} disabled={!canEditTrial} />
-        </div>
-      </div>
-
-      {/* Admission */}
-      <div style={cardStyle}>
-        <h2 style={h2Style}>Admission</h2>
-        <div style={gridStyle}>
-          <SelectField label="Admission Status" value={form.admissionStatus} options={ADMISSION_STATUSES} onChange={(v) => set('admissionStatus', v)} disabled={!canEditAdmission} />
-          <Field label="Admission Timestamp" value={formatTimestampIST(lead.admissionTimestamp)} />
-        </div>
-      </div>
-
       {/* Reminder calls */}
       <div style={cardStyle}>
         <h2 style={h2Style}>Reminder calls (to get the lead to join the meeting)</h2>
@@ -445,6 +388,61 @@ export default function LeadDetailClient({
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Connecting / Meeting outcome */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Meeting outcome</h2>
+        <div style={gridStyle}>
+          <SelectField label="Connecting Status" value={form.connectingStatus} options={CONNECTING_STATUSES} onChange={(v) => set('connectingStatus', v)} disabled={!canEditConnecting} />
+          <div>
+            <div style={labelStyle}>Meeting Status</div>
+            <StatusBadge status={lead.meetingStatus} />
+          </div>
+          <Field label="Meeting Attempt Count" value={String(lead.meetingAttemptCount)} />
+        </div>
+        {form.connectingStatus === 'Rescheduled' && (
+          <>
+            <p style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 10 }}>
+              Fill in the new time below — it becomes the new Meeting Date/Time automatically and clears itself once saved.
+            </p>
+            <div style={gridStyle}>
+              <DateField label="Next Meeting Date" value={form.nextMeetingDate} onChange={(v) => set('nextMeetingDate', v)} disabled={!canEditNextMeeting} />
+              <TimeField label="Next Meeting Time" value={form.nextMeetingTime} onChange={(v) => set('nextMeetingTime', v)} disabled={!canEditNextMeeting} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Trial */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Trial</h2>
+        <div style={gridStyle}>
+          <SelectField label="Trial Status" value={form.trialStatus} options={TRIAL_STATUSES} onChange={(v) => set('trialStatus', v)} disabled={!canEditTrial} />
+          <DateField label="Trial Date" value={form.trialDate} onChange={(v) => set('trialDate', v)} disabled={!canEditTrial} />
+          <TimeField label="Trial Time" value={form.trialTime} onChange={(v) => set('trialTime', v)} disabled={!canEditTrial} />
+          <Field label="Trial Attempt Count" value={String(lead.trialAttemptCount)} />
+        </div>
+        {form.trialStatus === 'Rescheduled' && (
+          <>
+            <p style={{ fontSize: 12, color: '#888', marginTop: 10, marginBottom: 10 }}>
+              Fill in the new time below — it becomes the new Trial Date/Time automatically and clears itself once saved.
+            </p>
+            <div style={gridStyle}>
+              <DateField label="Next Trial Date" value={form.nextTrialDate} onChange={(v) => set('nextTrialDate', v)} disabled={!canEditTrial} />
+              <TimeField label="Next Trial Time" value={form.nextTrialTime} onChange={(v) => set('nextTrialTime', v)} disabled={!canEditTrial} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Admission */}
+      <div style={cardStyle}>
+        <h2 style={h2Style}>Admission</h2>
+        <div style={gridStyle}>
+          <SelectField label="Admission Status" value={form.admissionStatus} options={ADMISSION_STATUSES} onChange={(v) => set('admissionStatus', v)} disabled={!canEditAdmission} />
+          <Field label="Admission Timestamp" value={formatTimestampIST(lead.admissionTimestamp)} />
+        </div>
       </div>
 
       {/* Handover / assignment */}
@@ -610,5 +608,15 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#111',
   border: '1px solid #ccc',
   borderRadius: 4,
+  cursor: 'pointer',
+};
+
+const backLinkStyle: React.CSSProperties = {
+  fontSize: 14,
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#1a56c4',
+  textDecoration: 'underline',
   cursor: 'pointer',
 };

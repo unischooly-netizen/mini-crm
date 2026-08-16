@@ -100,6 +100,12 @@ export async function GET(request: NextRequest) {
 
   // --- Stage 3 columns: Connecting/Meeting, Trial, Admission, Reminder Calls, audit ---
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS connecting_status TEXT`;
+  // Connecting Status now defaults to "Pending" like the other Stage 3 statuses
+  // (it used to be left blank until first touched) — backfill any existing
+  // blanks, then make Pending the actual column default going forward.
+  await sql`UPDATE leads SET connecting_status = 'Pending' WHERE connecting_status IS NULL`;
+  await sql`ALTER TABLE leads ALTER COLUMN connecting_status SET DEFAULT 'Pending'`;
+  await sql`ALTER TABLE leads ALTER COLUMN connecting_status SET NOT NULL`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_status TEXT NOT NULL DEFAULT 'Pending'`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_attempt_count INTEGER NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_meeting_date DATE`;

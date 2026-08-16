@@ -30,14 +30,6 @@ type QLead = {
   meetingStatus: string;
 };
 
-const backPathFor: Record<Role, string> = {
-  admin: '/admin',
-  presales_agent: '/dashboard',
-  vertical_head: '/qualified-leads',
-  sales_counsellor: '/qualified-leads',
-  data_team: '/admin',
-};
-
 const ALL = 'All';
 
 // "Today's meetings first, then future ascending, then past at the bottom" —
@@ -99,29 +91,39 @@ export default function QualifiedLeadsClient({
   const [handoverFilter, setHandoverFilter] = useState(ALL);
   const [meetingDateFilter, setMeetingDateFilter] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError('');
     try {
       const res = await fetch(`/api/qualified-leads?view=${view}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setLoadError(data.error || `Could not load leads (server said: ${res.status}). If this just started happening after an update, the database may need /api/init run again.`);
-        setLeads([]);
+        if (!silent) setLeads([]);
         return;
       }
       setLeads(data.leads || []);
     } catch {
-      setLoadError('Could not reach the server. Check your connection and try again.');
-      setLeads([]);
+      if (!silent) {
+        setLoadError('Could not reach the server. Check your connection and try again.');
+        setLeads([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [view]);
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Auto-refresh in the background so newly-assigned leads (e.g. a VH just
+  // handed one to you) show up without needing a manual page reload.
+  useEffect(() => {
+    const interval = setInterval(() => load(true), 25000);
+    return () => clearInterval(interval);
   }, [load]);
 
   useEffect(() => {
@@ -135,20 +137,42 @@ export default function QualifiedLeadsClient({
   }, [role]);
 
   async function assignVh(leadId: number, vhUserId: number | null) {
-    await fetch(`/api/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignedVhUserId: vhUserId }),
-    });
+    setActionError('');
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedVhUserId: vhUserId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || `Could not assign Vertical Head (server said: ${res.status}).`);
+        return;
+      }
+    } catch {
+      setActionError('Could not reach the server. Check your connection and try again.');
+      return;
+    }
     load();
   }
 
   async function assignCounsellor(leadId: number, counsellorUserId: number | null) {
-    await fetch(`/api/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignedCounsellorUserId: counsellorUserId }),
-    });
+    setActionError('');
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedCounsellorUserId: counsellorUserId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || `Could not assign Sales Counsellor (server said: ${res.status}).`);
+        return;
+      }
+    } catch {
+      setActionError('Could not reach the server. Check your connection and try again.');
+      return;
+    }
     load();
   }
 
@@ -199,12 +223,12 @@ export default function QualifiedLeadsClient({
   ];
 
   return (
-    <div style={{ maxWidth: 1300, margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <BrandHeader subtitle={subtitle} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
-      <Link href={backPathFor[role]} style={{ fontSize: 14 }}>← Back</Link>
+      <button onClick={() => router.back()} style={backLinkStyle}>← Back</button>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 4, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
@@ -273,6 +297,9 @@ export default function QualifiedLeadsClient({
         {loadError && (
           <p style={{ color: 'crimson' }}>{loadError}</p>
         )}
+        {actionError && (
+          <p style={{ color: 'crimson' }}>{actionError}</p>
+        )}
         {visibleLeads.length === 0 && !loading && !loadError && (
           <p style={{ color: '#777' }}>Nothing here yet.</p>
         )}
@@ -300,7 +327,7 @@ export default function QualifiedLeadsClient({
                   <td>{l.mobile}</td>
                   <td>{l.language}</td>
                   <td>{l.ownerName || '—'}</td>
-                  <td>{l.connectingStatus ? <StatusBadge status={l.connectingStatus} /> : '—'}</td>
+                  <td><StatusBadge status={l.connectingStatus || 'Pending'} /></td>
                   <td>{l.handoverStatus}</td>
                   {showVhColumn && (
                     <td>
@@ -359,5 +386,15 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#111',
   border: '1px solid #ccc',
   borderRadius: 4,
+  cursor: 'pointer',
+};
+
+const backLinkStyle: React.CSSProperties = {
+  fontSize: 14,
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#1a56c4',
+  textDecoration: 'underline',
   cursor: 'pointer',
 };
