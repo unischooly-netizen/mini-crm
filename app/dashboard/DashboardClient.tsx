@@ -2,7 +2,7 @@
 
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
-import { DashboardsMenu } from '@/app/components/DashboardKit';
+import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
 import { formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -83,6 +83,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     );
   };
   const visibleLeads = (statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter)).filter(bySearch);
+  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${statusFilter}|${search}`);
 
   const counts = PIPELINE_TABS.reduce<Record<string, number>>((acc, s) => {
     acc[s] = s === 'All' ? leads.length : leads.filter((l) => l.status === s).length;
@@ -133,7 +134,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
             </tr>
           </thead>
           <tbody>
-            {visibleLeads.map((lead) => (
+            {pageItems.map((lead) => (
               <tr key={lead.id}>
                 <td>{lead.leadCode}</td>
                 <td>{lead.name}</td>
@@ -149,6 +150,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
           </tbody>
         </table>
       )}
+      <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
     </div>
   );
 }
