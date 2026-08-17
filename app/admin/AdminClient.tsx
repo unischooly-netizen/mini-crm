@@ -1,7 +1,7 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
-import { DashboardsMenu } from '@/app/components/DashboardKit';
+import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
 import { formatDate, formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -714,6 +714,7 @@ function LeadsTab({
   const agentName = agentFilter !== 'All' && agentFilter !== 'Unassigned'
     ? agents.find((a) => String(a.id) === agentFilter)?.name
     : null;
+  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${agentFilter}|${statusFilter}|${search}`);
 
   return (
     <div style={cardStyle}>
@@ -755,7 +756,7 @@ function LeadsTab({
           </tr>
         </thead>
         <tbody>
-          {visibleLeads.map((lead) => (
+          {pageItems.map((lead) => (
             <tr key={lead.id}>
               <td>{lead.leadCode}</td>
               <td>{lead.name}</td>
@@ -783,6 +784,7 @@ function LeadsTab({
           ))}
         </tbody>
       </table>
+      <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
     </div>
   );
 }
