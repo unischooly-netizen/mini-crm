@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { formatDateTime } from '@/lib/format';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
-import { DashboardsMenu } from '@/app/components/DashboardKit';
+import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
 type UserOption = { id: number; name: string; role: Role };
@@ -209,6 +209,10 @@ export default function QualifiedLeadsClient({
   });
 
   const visibleLeads = sortQualifiedLeads(filteredLeads);
+  const { page, setPage, totalPages, pageItems } = usePageSlice(
+    visibleLeads,
+    `${view}|${search}|${languageFilter}|${vhFilter}|${counsellorFilter}|${handoverFilter}|${meetingDateFilter}`
+  );
 
   // Only Vertical Head and Sales Counsellor land on this page as their
   // actual home page (see roleHomePath in lib/auth.ts) — for every other
@@ -325,7 +329,7 @@ export default function QualifiedLeadsClient({
               </tr>
             </thead>
             <tbody>
-              {visibleLeads.map((l) => (
+              {pageItems.map((l) => (
                 <tr key={l.id}>
                   <td style={{ color: followupColor(l.meetingDate, l.meetingTime), fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {formatDateTime(l.meetingDate, l.meetingTime) || '—'}
@@ -370,6 +374,7 @@ export default function QualifiedLeadsClient({
             </tbody>
           </table>
         )}
+        <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
       </div>
     </div>
   );
