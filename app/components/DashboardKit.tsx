@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 // Shared building blocks for the Stage 4 reporting dashboards (Call Log,
 // Today's Follow-up, and the ones after them): a color-coded KPI card and a
@@ -100,3 +101,75 @@ export function DashboardsMenu() {
     </select>
   );
 }
+
+// ---- Client-side pagination for long lead lists (All Leads, Agent Tabs,
+// Qualified Leads, My Leads) ----------------------------------------------
+// All of these fetch their full filtered dataset once and filter/sort in
+// the browser already, so pagination here just slices what's already in
+// memory — no API changes needed. usePageSlice keeps a page number, resets
+// it to 1 whenever the caller's resetKey changes (e.g. a filter or search
+// term), and hands back only the current page's items plus everything a
+// pager control needs to render itself.
+export const PAGE_SIZE = 100;
+
+export function usePageSlice<T>(items: T[], resetKey: unknown): {
+  page: number;
+  setPage: (p: number) => void;
+  totalPages: number;
+  pageItems: T[];
+} {
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  return { page: safePage, setPage, totalPages, pageItems };
+}
+
+export function Pager({ page, totalPages, totalItems, onChange }: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  onChange: (p: number) => void;
+}) {
+  if (totalItems === 0) return null;
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, totalItems);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', flexWrap: 'wrap' }}>
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page <= 1}
+        style={{ ...pagerButtonStyle, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'default' : 'pointer' }}
+      >
+        ← Prev
+      </button>
+      <span style={{ fontSize: 13, color: '#555' }}>
+        Showing {start}–{end} of {totalItems} · Page {page} of {totalPages}
+      </span>
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages}
+        style={{ ...pagerButtonStyle, opacity: page >= totalPages ? 0.4 : 1, cursor: page >= totalPages ? 'default' : 'pointer' }}
+      >
+        Next →
+      </button>
+    </div>
+  );
+}
+
+const pagerButtonStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  border: '1px solid #ccc',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#111',
+  fontSize: 13,
+};
+
