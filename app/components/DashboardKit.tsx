@@ -67,6 +67,8 @@ export const DASHBOARD_LINKS: { href: string; label: string }[] = [
   { href: '/dashboards/today-followup', label: "Today's Follow-up" },
   { href: '/dashboards/team-performance', label: 'Team Performance' },
   { href: '/dashboards/qualified-dashboard', label: 'Qualified Dashboard' },
+  { href: '/dashboards/operations', label: 'Operations Dashboard' },
+  { href: '/dashboards/ceo', label: 'CEO Dashboard' },
 ];
 
 export function DashboardsMenu() {
