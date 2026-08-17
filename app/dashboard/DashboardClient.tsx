@@ -2,6 +2,7 @@
 
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
+import { DashboardsMenu } from '@/app/components/DashboardKit';
 import { formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -99,10 +100,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
         <NavTab active>Leads</NavTab>
         <Link href="/qualified-leads" style={navLinkStyle}>Qualified Leads</Link>
         <Link href="/qualified-leads?view=reschedule" style={navLinkStyle}>Reschedule Pending</Link>
-        <Link href="/dashboards/call-log" style={navLinkStyle}>Call Log</Link>
-        <Link href="/dashboards/today-followup" style={navLinkStyle}>Today's Follow-up</Link>
-        <Link href="/dashboards/team-performance" style={navLinkStyle}>Team Performance</Link>
-        <Link href="/dashboards/qualified-dashboard" style={navLinkStyle}>Qualified Dashboard</Link>
+        <DashboardsMenu />
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>

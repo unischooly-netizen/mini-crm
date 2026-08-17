@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { formatDateTime } from '@/lib/format';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
+import { DashboardsMenu } from '@/app/components/DashboardKit';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
 type UserOption = { id: number; name: string; role: Role };
@@ -209,6 +210,13 @@ export default function QualifiedLeadsClient({
 
   const visibleLeads = sortQualifiedLeads(filteredLeads);
 
+  // Only Vertical Head and Sales Counsellor land on this page as their
+  // actual home page (see roleHomePath in lib/auth.ts) — for every other
+  // role this is a page they've merely navigated into (e.g. from "Qualified
+  // Leads" on the Agent or Admin nav), so the Dashboards menu shouldn't
+  // duplicate here for them.
+  const isHomePage = role === 'vertical_head' || role === 'sales_counsellor';
+
   let subtitle = 'Qualified Leads';
   if (view === 'reschedule') subtitle = 'Reschedule Pending';
   if (view === 'cancelled') subtitle = 'Cancelled Meetings';
@@ -248,10 +256,7 @@ export default function QualifiedLeadsClient({
             {t.label}
           </button>
         ))}
-        <Link href="/dashboards/call-log" style={dashboardLinkStyle}>Call Log</Link>
-        <Link href="/dashboards/today-followup" style={dashboardLinkStyle}>Today's Follow-up</Link>
-        <Link href="/dashboards/team-performance" style={dashboardLinkStyle}>Team Performance</Link>
-        <Link href="/dashboards/qualified-dashboard" style={dashboardLinkStyle}>Qualified Dashboard</Link>
+        {isHomePage ? <DashboardsMenu /> : null}
       </div>
 
       <div style={{ ...cardStyle, marginTop: 12 }}>
@@ -403,12 +408,3 @@ const backLinkStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const dashboardLinkStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  border: '1px solid #ccc',
-  borderRadius: 4,
-  background: '#fff',
-  color: '#111',
-  fontSize: 14,
-  textDecoration: 'none',
-};

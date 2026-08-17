@@ -1,6 +1,7 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
+import { DashboardsMenu } from '@/app/components/DashboardKit';
 import { formatDate, formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -181,10 +182,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <TabButton active={tab === 'leads' && leadsAgentFilter === 'All'} onClick={() => { setTab('leads'); setLeadsAgentFilter('All'); }}>All Leads</TabButton>
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
-        <TabButton active={false} onClick={() => router.push('/dashboards/call-log')}>Call Log</TabButton>
-        <TabButton active={false} onClick={() => router.push('/dashboards/today-followup')}>Today's Follow-up</TabButton>
-        <TabButton active={false} onClick={() => router.push('/dashboards/team-performance')}>Team Performance</TabButton>
-        <TabButton active={false} onClick={() => router.push('/dashboards/qualified-dashboard')}>Qualified Dashboard</TabButton>
+        <DashboardsMenu />
         {(() => {
           const opsTabs: { key: Tab; label: string }[] = [
             { key: 'upload', label: 'Upload Leads' },
