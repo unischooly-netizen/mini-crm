@@ -33,6 +33,16 @@ function addDays(istShifted: Date, days: number): Date {
   return d;
 }
 
+/** Today's date as 'YYYY-MM-DD', computed in IST (not the server's local/UTC date). */
+export function todayIstDateStr(): string {
+  return toIstDateTimeParts(new Date()).date;
+}
+
+/** Current wall-clock time in IST as 'HH:MM' (24h), for comparing against stored time strings. */
+export function nowIstTimeStr(): string {
+  return toIstDateTimeParts(new Date()).time;
+}
+
 /** Returns { date: 'YYYY-MM-DD', time: 'HH:MM' } (24h) in IST for the given UTC instant. */
 export function toIstDateTimeParts(utcDate: Date): { date: string; time: string } {
   const ist = toIstShifted(utcDate);

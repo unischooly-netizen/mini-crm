@@ -248,6 +248,8 @@ export default function QualifiedLeadsClient({
             {t.label}
           </button>
         ))}
+        <Link href="/dashboards/call-log" style={dashboardLinkStyle}>Call Log</Link>
+        <Link href="/dashboards/today-followup" style={dashboardLinkStyle}>Today's Follow-up</Link>
       </div>
 
       <div style={{ ...cardStyle, marginTop: 12 }}>
@@ -397,4 +399,14 @@ const backLinkStyle: React.CSSProperties = {
   color: '#1a56c4',
   textDecoration: 'underline',
   cursor: 'pointer',
+};
+
+const dashboardLinkStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  border: '1px solid #ccc',
+  borderRadius: 4,
+  background: '#fff',
+  color: '#111',
+  fontSize: 14,
+  textDecoration: 'none',
 };
