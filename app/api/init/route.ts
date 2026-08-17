@@ -137,6 +137,13 @@ export async function GET(request: NextRequest) {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call3_date DATE`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminder_call3_time TEXT`;
 
+  // --- Stage 4: first-transition timestamps, for dashboard "avg days between
+  // stages" / "qualified today" metrics. Nullable — leads that transitioned
+  // before this column existed simply have no timing data for that stage.
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualified_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS vh_assigned_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS counsellor_assigned_at TIMESTAMPTZ`;
+
   // Widen the status check constraint to the new pipeline status values.
   await sql`ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check`;
   await sql`ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN ('New','Not Picked','Follow-up Needed','Qualified','Not Qualified'))`;

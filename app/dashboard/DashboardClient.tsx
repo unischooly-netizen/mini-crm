@@ -101,6 +101,8 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
         <Link href="/qualified-leads?view=reschedule" style={navLinkStyle}>Reschedule Pending</Link>
         <Link href="/dashboards/call-log" style={navLinkStyle}>Call Log</Link>
         <Link href="/dashboards/today-followup" style={navLinkStyle}>Today's Follow-up</Link>
+        <Link href="/dashboards/team-performance" style={navLinkStyle}>Team Performance</Link>
+        <Link href="/dashboards/qualified-dashboard" style={navLinkStyle}>Qualified Dashboard</Link>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>

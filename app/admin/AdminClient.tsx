@@ -183,6 +183,8 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         <TabButton active={false} onClick={() => router.push('/qualified-leads')}>Qualified Leads</TabButton>
         <TabButton active={false} onClick={() => router.push('/dashboards/call-log')}>Call Log</TabButton>
         <TabButton active={false} onClick={() => router.push('/dashboards/today-followup')}>Today's Follow-up</TabButton>
+        <TabButton active={false} onClick={() => router.push('/dashboards/team-performance')}>Team Performance</TabButton>
+        <TabButton active={false} onClick={() => router.push('/dashboards/qualified-dashboard')}>Qualified Dashboard</TabButton>
         {(() => {
           const opsTabs: { key: Tab; label: string }[] = [
             { key: 'upload', label: 'Upload Leads' },

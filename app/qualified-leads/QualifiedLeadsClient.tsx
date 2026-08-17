@@ -250,6 +250,8 @@ export default function QualifiedLeadsClient({
         ))}
         <Link href="/dashboards/call-log" style={dashboardLinkStyle}>Call Log</Link>
         <Link href="/dashboards/today-followup" style={dashboardLinkStyle}>Today's Follow-up</Link>
+        <Link href="/dashboards/team-performance" style={dashboardLinkStyle}>Team Performance</Link>
+        <Link href="/dashboards/qualified-dashboard" style={dashboardLinkStyle}>Qualified Dashboard</Link>
       </div>
 
       <div style={{ ...cardStyle, marginTop: 12 }}>

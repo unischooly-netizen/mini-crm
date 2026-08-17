@@ -46,6 +46,7 @@ const SELECT_LEAD_COLUMNS = `
       l.trial_attempt_count AS "trialAttemptCount",
       l.next_trial_date AS "nextTrialDate", l.next_trial_time AS "nextTrialTime",
       l.admission_status AS "admissionStatus", l.admission_timestamp AS "admissionTimestamp",
+      l.qualified_at AS "qualifiedAt", l.vh_assigned_at AS "vhAssignedAt", l.counsellor_assigned_at AS "counsellorAssignedAt",
       l.lifecycle_status AS "lifecycleStatus", l.revoked_timestamp AS "revokedTimestamp", l.revoked_reason AS "revokedReason",
       l.reminder_call1_status AS "reminderCall1Status", l.reminder_call1_date AS "reminderCall1Date", l.reminder_call1_time AS "reminderCall1Time",
       l.reminder_call2_status AS "reminderCall2Status", l.reminder_call2_date AS "reminderCall2Date", l.reminder_call2_time AS "reminderCall2Time",
@@ -242,6 +243,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const qualificationStatus = computeQualificationStatus(finalOutcome);
   const pipelineStatus = computePipelineStatus(totalAttempts, qualificationStatus);
 
+  // ---- First-transition timestamps, for funnel/leakage timing analysis ----
+  // (Team Performance / Qualified Dashboard "Avg Days X to Y" metrics.) Each
+  // is stamped once, the first time the lead crosses into that state, and
+  // never overwritten afterwards — same pattern as admissionTimestamp below.
+  const wasQualified = existing.qualificationStatus === 'Qualified';
+  const qualifiedAt =
+    !wasQualified && qualificationStatus === 'Qualified'
+      ? nowUtc.toISOString()
+      : (existing.qualifiedAt as string | null);
+  const vhAssignedAt =
+    !assignedVhUserId0 && assignedVhUserId
+      ? nowUtc.toISOString()
+      : (existing.vhAssignedAt as string | null);
+  const counsellorAssignedAt =
+    !assignedCounsellorUserId0 && assignedCounsellorUserId
+      ? nowUtc.toISOString()
+      : (existing.counsellorAssignedAt as string | null);
+
   // ---- Meeting / Connecting Status cascade ----
   // Next Meeting Date/Time is a *transient* reschedule input: when both are
   // supplied together, they fold into Meeting Date/Time immediately and the
@@ -434,6 +453,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     ['trial_date', trialDate], ['trial_time', trialTime], ['trial_status', finalTrialStatus], ['trial_attempt_count', trialAttemptCount],
     ['next_trial_date', nextTrialDate], ['next_trial_time', nextTrialTime],
     ['admission_status', admissionStatus], ['admission_timestamp', admissionTimestamp],
+    ['qualified_at', qualifiedAt], ['vh_assigned_at', vhAssignedAt], ['counsellor_assigned_at', counsellorAssignedAt],
     ['lifecycle_status', lifecycle.lifecycleStatus], ['revoked_timestamp', lifecycle.revokedTimestamp], ['revoked_reason', lifecycle.revokedReason],
     ['reminder_call1_status', reminderStatuses[0]], ['reminder_call1_date', reminderDates[0]], ['reminder_call1_time', reminderTimes[0]],
     ['reminder_call2_status', reminderStatuses[1]], ['reminder_call2_date', reminderDates[1]], ['reminder_call2_time', reminderTimes[1]],
