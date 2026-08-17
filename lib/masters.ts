@@ -54,8 +54,10 @@ export const FINAL_OUTCOME_TO_QUALIFICATION: Record<string, string> = {
   'Junior Lead': 'Not Qualified',
   'Wrong Number': 'Not Qualified',
   'Already Learning': 'Not Qualified',
-  'Budget Issue': 'Not Qualified',
-  'No Response': 'Not Qualified',
+  // Budget Issue / No Response are follow-up-worthy, not dead ends — matches
+  // how these outcomes were actually treated in the historical data.
+  'Budget Issue': 'Follow-up Needed',
+  'No Response': 'Follow-up Needed',
   'Call Back Later': 'Follow-up Needed',
 };
 
