@@ -38,10 +38,10 @@ export function FilterField({ label, children }: { label: string; children: Reac
 }
 
 export const selectStyle: React.CSSProperties = {
-  padding: '8px 10px',
-  borderRadius: 8,
+  padding: '5px 6px',
+  borderRadius: 6,
   border: '1px solid #e3e5f0',
-  background: '#f9f9fc',
+  background: '#fff',
   fontSize: 13,
 };
 
