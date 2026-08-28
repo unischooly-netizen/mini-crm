@@ -1,7 +1,8 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
-import { DashboardsMenu } from '@/app/components/DashboardKit';
+import { ThemeToggle } from '@/app/components/ThemeToggle';
+import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
 import { formatDate, formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -165,10 +166,13 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
   const agents = users.filter((u) => u.role === 'presales_agent');
 
   return (
-    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+    <div className="page-shell" style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <BrandHeader subtitle={`Admin (${adminName})`} />
-        <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ThemeToggle />
+          <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        </div>
       </div>
 
       {Object.keys(loadErrors).length > 0 && (
@@ -202,10 +206,11 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
                 setTab(e.target.value as Tab);
               }}
               style={{
-                padding: '8px 12px', border: isOpsTabActive ? '1.5px solid #3c4faa' : '1px solid #e3e5f0',
-                borderRadius: 8, background: isOpsTabActive ? '#eef0fb' : '#fff',
-                color: isOpsTabActive ? '#232c52' : '#10142a',
+                padding: '8px 12px', border: isOpsTabActive ? '1.5px solid var(--accent)' : '1px solid var(--input-border)',
+                borderRadius: 8, background: 'var(--card-bg)',
+                color: isOpsTabActive ? 'var(--accent-dark)' : 'var(--fg)',
                 cursor: 'pointer', fontWeight: isOpsTabActive ? 600 : 400,
+                maxWidth: '100%',
               }}
             >
               <option value="">Operations ▾</option>
@@ -223,7 +228,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
               setTab('leads');
               setLeadsAgentFilter(e.target.value);
             }}
-            style={{ padding: '8px 12px', border: '1px solid #e3e5f0', borderRadius: 8, background: '#fff', cursor: 'pointer' }}
+            style={{ padding: '8px 12px', border: '1px solid var(--input-border)', borderRadius: 8, background: 'var(--card-bg)', color: 'var(--fg)', cursor: 'pointer', maxWidth: '100%' }}
           >
             <option value="">Agent Tabs ▾</option>
             {agents.map((a) => (
@@ -259,10 +264,10 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       style={{
         padding: '8px 16px',
-        border: active ? 'none' : '1px solid #e3e5f0',
+        border: active ? 'none' : '1px solid var(--input-border)',
         borderRadius: 8,
-        background: active ? 'linear-gradient(135deg, #232c52, #3c4faa)' : '#fff',
-        color: active ? '#fff' : '#232c52',
+        background: active ? 'linear-gradient(135deg, var(--accent-dark), var(--accent))' : 'var(--card-bg)',
+        color: active ? '#fff' : 'var(--accent-dark)',
         cursor: 'pointer',
         fontWeight: active ? 600 : 500,
         boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
@@ -331,16 +336,18 @@ function UsersTab({ users, onChanged }: { users: User[]; onChanged: () => void }
 
       <div style={cardStyle}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Existing users ({users.length})</h2>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Role</th><th>PIN</th><th></th><th></th></tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <UserRow key={u.id} user={u} onChanged={onChanged} />
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Role</th><th>PIN</th><th></th><th></th></tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <UserRow key={u.id} user={u} onChanged={onChanged} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -439,7 +446,7 @@ function UserRow({ user, onChanged }: { user: User; onChanged: () => void }) {
     <tr>
       <td>{user.name}</td>
       <td>{ROLE_LABELS[user.role]}</td>
-      <td>{user.pin !== undefined ? (user.pin ?? <span style={{ color: '#999' }}>not viewable — reset to set</span>) : ''}</td>
+      <td>{user.pin !== undefined ? (user.pin ?? <span style={{ color: 'var(--muted)' }}>not viewable — reset to set</span>) : ''}</td>
       <td><button onClick={() => setEditing(true)} style={secondaryButtonStyle}>Edit</button></td>
       <td>
         <button onClick={handleDelete} disabled={deleting} style={dangerButtonStyleSmall}>{deleting ? 'Deleting…' : 'Delete'}</button>
@@ -522,7 +529,7 @@ function RulesTab({
     <div>
       <div style={cardStyle}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Add / update an allocation rule</h2>
-        <p style={{ fontSize: 13, color: '#555' }}>
+        <p style={{ fontSize: 13, color: 'var(--muted)' }}>
           Adding a rule for a Language + Agent that already exists will update it (percentage/active) instead of duplicating it.
         </p>
         <form onSubmit={handleSave} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -565,26 +572,28 @@ function RulesTab({
       </div>
 
       <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <h2 style={{ fontSize: 16, marginTop: 0 }}>Current rules</h2>
           <button onClick={handleRunNow} style={secondaryButtonStyle}>Run allocation now</button>
         </div>
         {runResult && <p style={{ fontSize: 13 }}>{runResult}</p>}
-        <table>
-          <thead>
-            <tr><th>Language</th><th>Agent</th><th>Percentage</th><th>Active</th></tr>
-          </thead>
-          <tbody>
-            {rules.map((r) => (
-              <tr key={r.id}>
-                <td>{r.language}</td>
-                <td>{r.agentName}</td>
-                <td>{r.percentage}%</td>
-                <td>{r.active ? 'Yes' : 'No'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Language</th><th>Agent</th><th>Percentage</th><th>Active</th></tr>
+            </thead>
+            <tbody>
+              {rules.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.language}</td>
+                  <td>{r.agentName}</td>
+                  <td>{r.percentage}%</td>
+                  <td>{r.active ? 'Yes' : 'No'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <div style={{ marginTop: 12, fontSize: 13 }}>
           {totalsByLanguage.map(({ lang, activeTotal }) => (
             <div key={lang} style={{ color: Math.abs(activeTotal - 100) > 0.01 ? 'crimson' : '#080' }}>
@@ -635,10 +644,10 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload leads (.xlsx or .csv)</h2>
-      <p style={{ fontSize: 14, color: '#555' }}>
+      <p style={{ fontSize: 14, color: 'var(--muted)' }}>
         Columns needed: Name, Mobile, Email, Source, Language, Pre-Sales Agent. Put the agent&apos;s exact
         name (as it appears in Manage Users) in the Pre-Sales Agent column to assign the lead directly —
-        leave it blank to leave the lead unassigned. Duplicate mobile numbers (already in the system) are
+        leave it blank to leave the lead unassigned. Duplicate mobile numbers already in the system are
         skipped automatically.
       </p>
       <form onSubmit={handleUpload}>
@@ -646,7 +655,7 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
           type="file"
           accept=".xlsx,.xls,.csv"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 12, maxWidth: '100%' }}
         />
         <br />
         <button type="submit" disabled={uploading} style={primaryButtonStyle}>
@@ -655,7 +664,7 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
       </form>
       {error && <p style={{ color: 'crimson' }}>{error}</p>}
       {result && (
-        <div style={{ marginTop: 16, background: '#f0f8f0', padding: 12, borderRadius: 4 }}>
+        <div style={{ marginTop: 16, background: '#e6f6ea', border: '1px solid #cdeed6', padding: 14, borderRadius: 10, color: '#0a3d1c' }}>
           <p>Rows in file: {result.rowsInFile}</p>
           <p>Leads added: {result.inserted}</p>
           <p>Skipped duplicates: {result.skippedDuplicates.length}{result.skippedDuplicates.length > 0 ? ` (${result.skippedDuplicates.join(', ')})` : ''}</p>
@@ -719,6 +728,7 @@ function LeadsTab({
   const agentName = agentFilter !== 'All' && agentFilter !== 'Unassigned'
     ? agents.find((a) => String(a.id) === agentFilter)?.name
     : null;
+  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${agentFilter}|${statusFilter}|${search}`);
 
   return (
     <div style={cardStyle}>
@@ -732,7 +742,7 @@ function LeadsTab({
             placeholder="Search lead code, name, mobile…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ ...inputStyle, width: 240 }}
+            style={{ ...inputStyle, width: 240, maxWidth: '100%' }}
           />
           <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} style={inputStyle}>
             <option value="All">All agents</option>
@@ -751,43 +761,47 @@ function LeadsTab({
           </select>
         </div>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Source</th>
-            <th>Language</th><th>Assigned Date</th><th>Owner</th><th>Status</th>
-            <th>Next Follow-up</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleLeads.map((lead) => (
-            <tr key={lead.id}>
-              <td>{lead.leadCode}</td>
-              <td>{lead.name}</td>
-              <td>{lead.mobile}</td>
-              <td>{lead.source}</td>
-              <td>{lead.language}</td>
-              <td>{formatDate(lead.assignedDate)}</td>
-              <td>
-                <select
-                  value={lead.ownerUserId ?? ''}
-                  onChange={(e) => reassign(lead.id, e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">Unassigned</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </td>
-              <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
-              <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
-                {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
-              </td>
-              <td><Link href={`/leads/${lead.id}`}>View</Link></td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Source</th>
+              <th>Language</th><th>Assigned Date</th><th>Owner</th><th>Status</th>
+              <th>Next Follow-up</th><th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pageItems.map((lead) => (
+              <tr key={lead.id}>
+                <td>{lead.leadCode}</td>
+                <td>{lead.name}</td>
+                <td>{lead.mobile}</td>
+                <td>{lead.source}</td>
+                <td>{lead.language}</td>
+                <td>{formatDate(lead.assignedDate)}</td>
+                <td>
+                  <select
+                    value={lead.ownerUserId ?? ''}
+                    onChange={(e) => reassign(lead.id, e.target.value ? Number(e.target.value) : null)}
+                    style={selectMiniStyle}
+                  >
+                    <option value="">Unassigned</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
+                <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
+                  {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
+                </td>
+                <td><Link href={`/leads/${lead.id}`}>View</Link></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
     </div>
   );
 }
@@ -888,7 +902,7 @@ function FullImportTab({ onImported }: { onImported: () => void }) {
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Full data import (migration)</h2>
-      <p style={{ fontSize: 14, color: '#555' }}>
+      <p style={{ fontSize: 14, color: 'var(--muted)' }}>
         For leads that already have history — call attempts, outcome, meeting/trial/admission status, VH and
         Counsellor already assigned — unlike the plain Upload Leads tab, which is only for brand-new,
         untouched leads. Add Vertical Head and Sales Counsellor users first; they&apos;re matched to the file by
@@ -901,7 +915,7 @@ function FullImportTab({ onImported }: { onImported: () => void }) {
           type="file"
           accept=".xlsx,.xls,.csv"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 12, maxWidth: '100%' }}
         />
         <br />
         <button type="submit" disabled={uploading} style={primaryButtonStyle}>
@@ -910,7 +924,7 @@ function FullImportTab({ onImported }: { onImported: () => void }) {
       </form>
       {error && <p style={{ color: 'crimson' }}>{error}</p>}
       {result && (
-        <div style={{ marginTop: 16, background: '#f0f8f0', padding: 12, borderRadius: 4 }}>
+        <div style={{ marginTop: 16, background: '#e6f6ea', border: '1px solid #cdeed6', padding: 14, borderRadius: 10, color: '#0a3d1c' }}>
           <p>Rows in file: {result.rowsInFile}</p>
           <p>Leads added: {result.inserted}</p>
           <p>Skipped duplicates: {result.skippedDuplicates}</p>
@@ -996,18 +1010,18 @@ function DataToolsTab({ role }: { role: Role }) {
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Export &amp; data cleanup</h2>
-      <p style={{ fontSize: 13, color: '#666', marginTop: -4 }}>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: -4 }}>
         Export downloads a CSV (opens directly in Excel) for leads assigned, or audit log entries logged, within the
         date range below. Leads are matched by Assigned Date; audit log entries by when they were logged.
       </p>
 
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
         <label>
-          <div style={{ fontSize: 12, color: '#777', marginBottom: 3 }}>From</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 3 }}>From</div>
           <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPreview(null); setClearResult(''); }} style={inputStyle} />
         </label>
         <label>
-          <div style={{ fontSize: 12, color: '#777', marginBottom: 3 }}>To</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 3 }}>To</div>
           <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreview(null); setClearResult(''); }} style={inputStyle} />
         </label>
       </div>
@@ -1030,9 +1044,9 @@ function DataToolsTab({ role }: { role: Role }) {
       </div>
 
       {role === 'admin' && (
-        <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>
+        <div style={{ borderTop: '1px solid var(--card-border)', paddingTop: 16 }}>
           <h3 style={{ fontSize: 14, marginTop: 0, color: '#b3261e' }}>Clear data in this range</h3>
-          <p style={{ fontSize: 13, color: '#666' }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
             Permanently deletes every lead assigned, and every audit log entry logged, within the range above.
             This cannot be undone — export first and check the file before doing this.
           </p>
@@ -1043,13 +1057,13 @@ function DataToolsTab({ role }: { role: Role }) {
           {previewError && <p style={{ color: 'crimson', fontSize: 13 }}>{previewError}</p>}
 
           {preview && (
-            <div style={{ marginTop: 12, padding: 12, background: '#fdeaea', borderRadius: 4 }}>
-              <p style={{ margin: '0 0 10px 0', fontSize: 14 }}>
+            <div style={{ marginTop: 12, padding: 12, background: '#fdeaea', borderRadius: 10 }}>
+              <p style={{ margin: '0 0 10px 0', fontSize: 14, color: '#4a1010' }}>
                 This will permanently delete <strong>{preview.leadCount} lead(s)</strong> and{' '}
                 <strong>{preview.auditCount} audit log entr{preview.auditCount === 1 ? 'y' : 'ies'}</strong>.
               </p>
               <label style={{ display: 'block', marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: '#555', marginBottom: 3 }}>Type DELETE to confirm</div>
+                <div style={{ fontSize: 12, color: '#4a1010', marginBottom: 3 }}>Type DELETE to confirm</div>
                 <input
                   type="text"
                   value={confirmText}
@@ -1082,31 +1096,33 @@ function AuditTab({ entries, onRefresh }: { entries: AuditEntry[]; onRefresh: ()
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Activity log ({entries.length})</h2>
         <button onClick={onRefresh} style={secondaryButtonStyle}>Refresh</button>
       </div>
-      <table>
-        <thead>
-          <tr><th>When</th><th>Who</th><th>Action</th><th>On</th><th>Details</th></tr>
-        </thead>
-        <tbody>
-          {entries.map((e) => (
-            <tr key={e.id}>
-              <td>{new Date(e.createdAt).toLocaleString()}</td>
-              <td>{e.actorName}</td>
-              <td>{e.action}</td>
-              <td>{e.targetType}{e.targetId ? ` #${e.targetId}` : ''}</td>
-              <td style={{ fontSize: 12, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {JSON.stringify(e.details)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Who</th><th>Action</th><th>On</th><th>Details</th></tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id}>
+                <td>{new Date(e.createdAt).toLocaleString()}</td>
+                <td>{e.actorName}</td>
+                <td>{e.action}</td>
+                <td>{e.targetType}{e.targetId ? ` #${e.targetId}` : ''}</td>
+                <td style={{ fontSize: 12, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {JSON.stringify(e.details)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e9ebf3',
+  background: 'var(--card-bg)',
+  border: '1px solid var(--card-border)',
   borderRadius: 14,
   padding: 20,
   marginBottom: 20,
@@ -1117,15 +1133,25 @@ const inputStyle: React.CSSProperties = {
   display: 'block',
   padding: '9px 11px',
   fontSize: 14,
-  border: '1px solid #e3e5f0',
-  background: '#f9f9fc',
+  border: '1px solid var(--input-border)',
+  background: 'var(--input-bg)',
+  color: 'var(--fg)',
   borderRadius: 8,
   marginTop: 4,
 };
 
+const selectMiniStyle: React.CSSProperties = {
+  padding: '5px 6px',
+  fontSize: 13,
+  border: '1px solid var(--input-border)',
+  background: 'var(--input-bg)',
+  color: 'var(--fg)',
+  borderRadius: 6,
+};
+
 const primaryButtonStyle: React.CSSProperties = {
   padding: '9px 16px',
-  background: 'linear-gradient(135deg, #232c52, #3c4faa)',
+  background: 'linear-gradient(135deg, var(--accent-dark), var(--accent))',
   color: '#fff',
   border: 'none',
   borderRadius: 8,
@@ -1136,9 +1162,9 @@ const primaryButtonStyle: React.CSSProperties = {
 
 const secondaryButtonStyle: React.CSSProperties = {
   padding: '7px 14px',
-  background: '#fff',
-  color: '#232c52',
-  border: '1px solid #d8dae8',
+  background: 'var(--card-bg)',
+  color: 'var(--accent-dark)',
+  border: '1px solid var(--input-border)',
   borderRadius: 8,
   cursor: 'pointer',
   fontWeight: 500,
