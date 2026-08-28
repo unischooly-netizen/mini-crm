@@ -2,15 +2,53 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg: #f4f5f9;
+  --fg: #10142a;
+  --muted: #8a90a8;
+  --card-bg: #ffffff;
+  --card-border: #e9ebf3;
+  --input-bg: #f9f9fc;
+  --input-border: #e3e5f0;
+  --th-bg: #fafafd;
+  --th-fg: #6b7080;
+  --td-border: #edeef5;
+  --row-hover: #f8f9fd;
+  --accent: #3c4faa;
+  --accent-dark: #232c52;
+  --scrollbar: #d6d9e8;
+  --scrollbar-hover: #b9bdd6;
+}
+
+[data-theme='dark'] {
+  --bg: #10121f;
+  --fg: #e7e9f5;
+  --muted: #8890b5;
+  --card-bg: #181c2e;
+  --card-border: #2b304a;
+  --input-bg: #1f2438;
+  --input-border: #343a58;
+  --th-bg: #1b1f34;
+  --th-fg: #9aa0c4;
+  --td-border: #272c46;
+  --row-hover: #1e2338;
+  --accent: #7c8cf0;
+  --accent-dark: #5865c4;
+  --scrollbar: #333a58;
+  --scrollbar-hover: #454d75;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(60, 79, 170, 0.05), transparent 40%),
-    radial-gradient(circle at 92% 8%, rgba(60, 200, 200, 0.05), transparent 40%),
-    #f4f5f9;
-  color: #10142a;
+  background: var(--bg);
+  color: var(--fg);
   -webkit-font-smoothing: antialiased;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 table {
@@ -19,16 +57,17 @@ table {
 }
 
 th, td {
-  border-bottom: 1px solid #edeef5;
+  border-bottom: 1px solid var(--td-border);
   padding: 7px 9px;
   font-size: 13.5px;
   text-align: left;
   white-space: nowrap;
+  color: var(--fg);
 }
 
 th {
-  background: #fafafd;
-  color: #6b7080;
+  background: var(--th-bg);
+  color: var(--th-fg);
   font-weight: 600;
   font-size: 12.5px;
 }
@@ -38,7 +77,15 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: #f8f9fd;
+  background: var(--row-hover);
+}
+
+/* Any table wrapped in .table-scroll scrolls sideways on its own instead of
+   pushing the whole page wider — this is what keeps wide grids usable on a
+   phone without needing a completely different mobile layout. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 button {
@@ -56,12 +103,13 @@ button:not(:disabled):active {
 
 input, select, textarea {
   font-family: inherit;
+  color: var(--fg);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #3c4faa !important;
+  border-color: var(--accent) !important;
   box-shadow: 0 0 0 3px rgba(60, 79, 170, 0.12);
 }
 
@@ -75,14 +123,29 @@ input:focus, select:focus, textarea:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d6d9e8;
+  background: var(--scrollbar);
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #b9bdd6;
+  background: var(--scrollbar-hover);
 }
 
 a {
-  color: #3c4faa;
+  color: var(--accent);
+}
+
+/* Phones: reclaim edge padding, keep inputs at 16px so iOS Safari doesn't
+   zoom in automatically when a field is tapped, and shrink the brand
+   header's tagline out of the way since space is tight. */
+@media (max-width: 640px) {
+  .page-shell {
+    padding: 12px !important;
+  }
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  .brand-tagline {
+    display: none;
+  }
 }
