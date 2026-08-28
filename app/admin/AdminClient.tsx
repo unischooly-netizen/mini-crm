@@ -165,14 +165,14 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
   const agents = users.filter((u) => u.role === 'presales_agent');
 
   return (
-    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <BrandHeader subtitle={`Admin (${adminName})`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
       </div>
 
       {Object.keys(loadErrors).length > 0 && (
-        <div style={{ background: '#fdeaea', border: '1px solid #f3b8b8', borderRadius: 4, padding: 12, marginBottom: 16 }}>
+        <div style={{ background: '#fdeaea', border: '1px solid #f3b8b8', borderRadius: 10, padding: 12, marginBottom: 16 }}>
           {Object.values(loadErrors).map((msg, i) => (
             <p key={i} style={{ color: '#b3261e', margin: i === 0 ? 0 : '6px 0 0' }}>{msg}</p>
           ))}
@@ -202,8 +202,10 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
                 setTab(e.target.value as Tab);
               }}
               style={{
-                padding: '8px 10px', border: isOpsTabActive ? '1px solid #111' : '1px solid #ccc',
-                borderRadius: 4, background: '#fff', cursor: 'pointer', fontWeight: isOpsTabActive ? 600 : 400,
+                padding: '8px 12px', border: isOpsTabActive ? '1.5px solid #3c4faa' : '1px solid #e3e5f0',
+                borderRadius: 8, background: isOpsTabActive ? '#eef0fb' : '#fff',
+                color: isOpsTabActive ? '#232c52' : '#10142a',
+                cursor: 'pointer', fontWeight: isOpsTabActive ? 600 : 400,
               }}
             >
               <option value="">Operations ▾</option>
@@ -221,7 +223,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
               setTab('leads');
               setLeadsAgentFilter(e.target.value);
             }}
-            style={{ padding: '8px 10px', border: '1px solid #ccc', borderRadius: 4, background: '#fff', cursor: 'pointer' }}
+            style={{ padding: '8px 12px', border: '1px solid #e3e5f0', borderRadius: 8, background: '#fff', cursor: 'pointer' }}
           >
             <option value="">Agent Tabs ▾</option>
             {agents.map((a) => (
@@ -256,12 +258,14 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       style={{
-        padding: '8px 14px',
-        border: '1px solid #ccc',
-        borderRadius: 4,
-        background: active ? '#111' : '#fff',
-        color: active ? '#fff' : '#111',
+        padding: '8px 16px',
+        border: active ? 'none' : '1px solid #e3e5f0',
+        borderRadius: 8,
+        background: active ? 'linear-gradient(135deg, #232c52, #3c4faa)' : '#fff',
+        color: active ? '#fff' : '#232c52',
         cursor: 'pointer',
+        fontWeight: active ? 600 : 500,
+        boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
       }}
     >
       {children}
@@ -1102,37 +1106,42 @@ function AuditTab({ entries, onRefresh }: { entries: AuditEntry[]; onRefresh: ()
 
 const cardStyle: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #ddd',
-  borderRadius: 6,
-  padding: 16,
+  border: '1px solid #e9ebf3',
+  borderRadius: 14,
+  padding: 20,
   marginBottom: 20,
+  boxShadow: '0 1px 3px rgba(16, 20, 42, 0.04)',
 };
 
 const inputStyle: React.CSSProperties = {
   display: 'block',
-  padding: '6px 8px',
+  padding: '9px 11px',
   fontSize: 14,
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  border: '1px solid #e3e5f0',
+  background: '#f9f9fc',
+  borderRadius: 8,
   marginTop: 4,
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: '8px 14px',
-  background: '#111',
+  padding: '9px 16px',
+  background: 'linear-gradient(135deg, #232c52, #3c4faa)',
   color: '#fff',
   border: 'none',
-  borderRadius: 4,
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 600,
+  boxShadow: '0 4px 12px rgba(60, 79, 170, 0.25)',
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
+  padding: '7px 14px',
   background: '#fff',
-  color: '#111',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  color: '#232c52',
+  border: '1px solid #d8dae8',
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 500,
 };
 
 const dangerButtonStyleSmall: React.CSSProperties = {
@@ -1140,7 +1149,7 @@ const dangerButtonStyleSmall: React.CSSProperties = {
   background: '#fdeaea',
   color: '#b3261e',
   border: '1px solid #f3b8b8',
-  borderRadius: 4,
+  borderRadius: 6,
   cursor: 'pointer',
   fontSize: 13,
 };
