@@ -72,20 +72,20 @@ export default function LoginPage() {
           margin-bottom: 28px;
         }
         .login-logo-badge {
-          width: 56px;
-          height: 56px;
-          border-radius: 14px;
-          background: linear-gradient(135deg, #1c2340, #34406e);
+          width: 64px;
+          height: 64px;
+          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid #e9ebf3;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 8px 20px rgba(28, 35, 64, 0.35);
+          box-shadow: 0 8px 20px rgba(28, 35, 64, 0.12);
           margin-bottom: 14px;
         }
         .login-logo-badge img {
-          width: 30px;
-          height: 30px;
-          filter: brightness(0) invert(1);
+          width: 40px;
+          height: 40px;
         }
         .login-title {
           font-size: 19px;
