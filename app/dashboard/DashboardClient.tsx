@@ -90,7 +90,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   }, {});
 
   return (
-    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <BrandHeader subtitle={`My Leads — ${agentName}`} />
         <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
@@ -115,7 +115,7 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
         placeholder="Search by lead code, name, mobile, or email…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{ padding: '8px 10px', fontSize: 14, border: '1px solid #ccc', borderRadius: 4, width: 320, marginBottom: 16, boxSizing: 'border-box' }}
+        style={{ padding: '9px 12px', fontSize: 14, border: '1px solid #e3e5f0', background: '#f9f9fc', borderRadius: 8, width: 320, marginBottom: 16, boxSizing: 'border-box' }}
       />
 
       {loading ? (
@@ -157,13 +157,15 @@ function NavTab({ active, children }: { active: boolean; children: React.ReactNo
   return (
     <span
       style={{
-        padding: '6px 14px',
-        border: '1px solid #ccc',
-        borderRadius: 4,
-        background: active ? '#111' : '#fff',
-        color: active ? '#fff' : '#111',
+        padding: '7px 16px',
+        border: active ? 'none' : '1px solid #e3e5f0',
+        borderRadius: 8,
+        background: active ? 'linear-gradient(135deg, #232c52, #3c4faa)' : '#fff',
+        color: active ? '#fff' : '#232c52',
         fontSize: 14,
+        fontWeight: active ? 600 : 500,
         display: 'inline-block',
+        boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
       }}
     >
       {children}
@@ -176,12 +178,14 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
     <button
       onClick={onClick}
       style={{
-        padding: '6px 12px',
-        border: '1px solid #ccc',
-        borderRadius: 4,
-        background: active ? '#111' : '#fff',
-        color: active ? '#fff' : '#111',
+        padding: '6px 14px',
+        border: active ? 'none' : '1px solid #e3e5f0',
+        borderRadius: 8,
+        background: active ? 'linear-gradient(135deg, #232c52, #3c4faa)' : '#fff',
+        color: active ? '#fff' : '#232c52',
         cursor: 'pointer',
+        fontWeight: active ? 600 : 500,
+        boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
       }}
     >
       {children}
@@ -190,20 +194,22 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
+  padding: '7px 14px',
   background: '#fff',
-  color: '#111',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  color: '#232c52',
+  border: '1px solid #d8dae8',
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 500,
 };
 
 const navLinkStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  padding: '7px 16px',
+  border: '1px solid #e3e5f0',
+  borderRadius: 8,
   background: '#fff',
-  color: '#111',
+  color: '#232c52',
   fontSize: 14,
+  fontWeight: 500,
   textDecoration: 'none',
 };
