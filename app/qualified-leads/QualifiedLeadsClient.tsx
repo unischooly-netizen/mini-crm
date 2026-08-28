@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
+import { ThemeToggle } from '@/app/components/ThemeToggle';
 import { formatDateTime } from '@/lib/format';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
-import { DashboardsMenu } from '@/app/components/DashboardKit';
+import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
 
 type Role = 'admin' | 'presales_agent' | 'vertical_head' | 'sales_counsellor' | 'data_team';
 type UserOption = { id: number; name: string; role: Role };
@@ -209,6 +210,10 @@ export default function QualifiedLeadsClient({
   });
 
   const visibleLeads = sortQualifiedLeads(filteredLeads);
+  const { page, setPage, totalPages, pageItems } = usePageSlice(
+    visibleLeads,
+    `${view}|${search}|${languageFilter}|${vhFilter}|${counsellorFilter}|${handoverFilter}|${meetingDateFilter}`
+  );
 
   // Only Vertical Head and Sales Counsellor land on this page as their
   // actual home page (see roleHomePath in lib/auth.ts) — for every other
@@ -231,10 +236,13 @@ export default function QualifiedLeadsClient({
   ];
 
   return (
-    <div style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+    <div className="page-shell" style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
         <BrandHeader subtitle={subtitle} />
-        <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ThemeToggle />
+          <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
+        </div>
       </div>
       <button onClick={() => router.back()} style={backLinkStyle}>← Back</button>
 
@@ -244,13 +252,15 @@ export default function QualifiedLeadsClient({
             key={t.key}
             onClick={() => router.push(t.key === 'qualified' ? '/qualified-leads' : `/qualified-leads?view=${t.key}`)}
             style={{
-              padding: '6px 14px',
-              border: '1px solid #ccc',
-              borderRadius: 4,
-              background: view === t.key ? '#111' : '#fff',
-              color: view === t.key ? '#fff' : '#111',
+              padding: '7px 16px',
+              border: view === t.key ? 'none' : '1px solid var(--input-border)',
+              borderRadius: 8,
+              background: view === t.key ? 'linear-gradient(135deg, var(--accent-dark), var(--accent))' : 'var(--card-bg)',
+              color: view === t.key ? '#fff' : 'var(--accent-dark)',
               cursor: 'pointer',
               fontSize: 14,
+              fontWeight: view === t.key ? 600 : 500,
+              boxShadow: view === t.key ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
             }}
           >
             {t.label}
@@ -269,7 +279,7 @@ export default function QualifiedLeadsClient({
             placeholder="Search lead code, name, mobile…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ ...inputStyle, width: 240 }}
+            style={{ ...inputStyle, width: 240, maxWidth: '100%' }}
           />
         </div>
 
@@ -294,7 +304,7 @@ export default function QualifiedLeadsClient({
             <option value={ALL}>All handover statuses</option>
             {handoverStatuses.map((h) => <option key={h} value={h}>{h}</option>)}
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#555' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
             Meeting date:
             <input type="date" value={meetingDateFilter} onChange={(e) => setMeetingDateFilter(e.target.value)} style={inputStyle} />
           </label>
@@ -310,92 +320,110 @@ export default function QualifiedLeadsClient({
           <p style={{ color: 'crimson' }}>{actionError}</p>
         )}
         {visibleLeads.length === 0 && !loading && !loadError && (
-          <p style={{ color: '#777' }}>Nothing here yet.</p>
+          <p style={{ color: 'var(--muted)' }}>Nothing here yet.</p>
         )}
         {visibleLeads.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>Meeting Date &amp; Time</th><th>Mode</th>
-                <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th><th>Pre-Sales Agent</th>
-                <th>Connecting Status</th><th>Handover Status</th>
-                {showVhColumn && <th>Vertical Head</th>}
-                {showCounsellorColumn && <th>Sales Counsellor</th>}
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleLeads.map((l) => (
-                <tr key={l.id}>
-                  <td style={{ color: followupColor(l.meetingDate, l.meetingTime), fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {formatDateTime(l.meetingDate, l.meetingTime) || '—'}
-                  </td>
-                  <td>{l.preferredMode || '—'}</td>
-                  <td>{l.leadCode}</td>
-                  <td>{l.name}</td>
-                  <td>{l.mobile}</td>
-                  <td>{l.language}</td>
-                  <td>{l.ownerName || '—'}</td>
-                  <td><StatusBadge status={l.connectingStatus || 'Pending'} /></td>
-                  <td>{l.handoverStatus}</td>
-                  {showVhColumn && (
-                    <td>
-                      {canAssignVh ? (
-                        <select
-                          value={l.assignedVhUserId ?? ''}
-                          onChange={(e) => assignVh(l.id, e.target.value ? Number(e.target.value) : null)}
-                        >
-                          <option value="">Unassigned</option>
-                          {vertHeads.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                        </select>
-                      ) : (l.assignedVhName || '—')}
-                    </td>
-                  )}
-                  {showCounsellorColumn && (
-                    <td>
-                      {canAssignCounsellor ? (
-                        <select
-                          value={l.assignedCounsellorUserId ?? ''}
-                          onChange={(e) => assignCounsellor(l.id, e.target.value ? Number(e.target.value) : null)}
-                        >
-                          <option value="">Unassigned</option>
-                          {counsellors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      ) : (l.assignedCounsellorName || '—')}
-                    </td>
-                  )}
-                  <td><Link href={`/leads/${l.id}`}>View</Link></td>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Meeting Date &amp; Time</th><th>Mode</th>
+                  <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th><th>Pre-Sales Agent</th>
+                  <th>Connecting Status</th><th>Handover Status</th>
+                  {showVhColumn && <th>Vertical Head</th>}
+                  {showCounsellorColumn && <th>Sales Counsellor</th>}
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pageItems.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ color: followupColor(l.meetingDate, l.meetingTime), fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {formatDateTime(l.meetingDate, l.meetingTime) || '—'}
+                    </td>
+                    <td>{l.preferredMode || '—'}</td>
+                    <td>{l.leadCode}</td>
+                    <td>{l.name}</td>
+                    <td>{l.mobile}</td>
+                    <td>{l.language}</td>
+                    <td>{l.ownerName || '—'}</td>
+                    <td><StatusBadge status={l.connectingStatus || 'Pending'} /></td>
+                    <td>{l.handoverStatus}</td>
+                    {showVhColumn && (
+                      <td>
+                        {canAssignVh ? (
+                          <select
+                            value={l.assignedVhUserId ?? ''}
+                            onChange={(e) => assignVh(l.id, e.target.value ? Number(e.target.value) : null)}
+                            style={selectMiniStyle}
+                          >
+                            <option value="">Unassigned</option>
+                            {vertHeads.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                          </select>
+                        ) : (l.assignedVhName || '—')}
+                      </td>
+                    )}
+                    {showCounsellorColumn && (
+                      <td>
+                        {canAssignCounsellor ? (
+                          <select
+                            value={l.assignedCounsellorUserId ?? ''}
+                            onChange={(e) => assignCounsellor(l.id, e.target.value ? Number(e.target.value) : null)}
+                            style={selectMiniStyle}
+                          >
+                            <option value="">Unassigned</option>
+                            {counsellors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        ) : (l.assignedCounsellorName || '—')}
+                      </td>
+                    )}
+                    <td><Link href={`/leads/${l.id}`}>View</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
+        <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
       </div>
     </div>
   );
 }
 
 const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #ddd',
-  borderRadius: 6,
-  padding: 16,
+  background: 'var(--card-bg)',
+  border: '1px solid var(--card-border)',
+  borderRadius: 14,
+  padding: 20,
+  boxShadow: '0 1px 3px rgba(16, 20, 42, 0.04)',
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: '6px 8px',
+  padding: '9px 11px',
   fontSize: 14,
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  border: '1px solid var(--input-border)',
+  background: 'var(--input-bg)',
+  color: 'var(--fg)',
+  borderRadius: 8,
+};
+
+const selectMiniStyle: React.CSSProperties = {
+  padding: '5px 6px',
+  fontSize: 13,
+  border: '1px solid var(--input-border)',
+  background: 'var(--input-bg)',
+  color: 'var(--fg)',
+  borderRadius: 6,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  background: '#fff',
-  color: '#111',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  padding: '7px 14px',
+  background: 'var(--card-bg)',
+  color: 'var(--accent-dark)',
+  border: '1px solid var(--input-border)',
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 500,
 };
 
 const backLinkStyle: React.CSSProperties = {
@@ -403,8 +431,7 @@ const backLinkStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
   padding: 0,
-  color: '#1a56c4',
+  color: 'var(--accent)',
   textDecoration: 'underline',
   cursor: 'pointer',
 };
-
