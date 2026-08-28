@@ -171,6 +171,7 @@ export default function AdminClient({ adminName, role }: { adminName: string; ro
         <BrandHeader subtitle={`Admin (${adminName})`} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ThemeToggle />
+          <a href="/help" style={{ background: 'var(--card-bg)', color: 'var(--fg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '9px 16px', fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>Help</a>
           <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
         </div>
       </div>
