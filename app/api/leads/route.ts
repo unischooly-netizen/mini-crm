@@ -20,7 +20,7 @@ export async function GET() {
       FROM leads l
       LEFT JOIN users u ON u.id = l.owner_user_id
       ORDER BY l.created_at DESC
-      LIMIT 3000
+      LIMIT 500000
     `;
     return NextResponse.json({ leads: rows });
   }
@@ -47,7 +47,7 @@ export async function GET() {
         ELSE 5
       END,
       created_at DESC
-    LIMIT 3000
+    LIMIT 500000
   `;
   return NextResponse.json({ leads: rows });
 }

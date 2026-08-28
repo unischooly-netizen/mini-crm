@@ -1,7 +1,7 @@
 'use client';
 
 import { BrandHeader } from '@/app/components/BrandHeader';
-import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
+import { DashboardsMenu } from '@/app/components/DashboardKit';
 import { formatDate, formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 
@@ -601,8 +601,8 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
     inserted: number;
     skippedDuplicates: string[];
     skippedBlank: number;
-    allocated: number;
-    unassignedLanguages: { language: string; reason: string }[];
+    ownerAssigned: number;
+    unmatchedOwners: string[];
   } | null>(null);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -632,9 +632,10 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
     <div style={cardStyle}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload leads (.xlsx or .csv)</h2>
       <p style={{ fontSize: 14, color: '#555' }}>
-        Columns needed: Name, Mobile, Email, Source, Language. Duplicate mobile numbers (already in the
-        system) are skipped automatically. Leads are allocated to agents right after upload, based on the
-        current Allocation Rules.
+        Columns needed: Name, Mobile, Email, Source, Language, Pre-Sales Agent. Put the agent&apos;s exact
+        name (as it appears in Manage Users) in the Pre-Sales Agent column to assign the lead directly —
+        leave it blank to leave the lead unassigned. Duplicate mobile numbers (already in the system) are
+        skipped automatically.
       </p>
       <form onSubmit={handleUpload}>
         <input
@@ -654,11 +655,11 @@ function UploadTab({ onUploaded }: { onUploaded: () => void }) {
           <p>Rows in file: {result.rowsInFile}</p>
           <p>Leads added: {result.inserted}</p>
           <p>Skipped duplicates: {result.skippedDuplicates.length}{result.skippedDuplicates.length > 0 ? ` (${result.skippedDuplicates.join(', ')})` : ''}</p>
-          <p>Allocated to an agent just now: {result.allocated}</p>
-          {result.unassignedLanguages.length > 0 && (
+          <p>Assigned to an agent: {result.ownerAssigned}</p>
+          {result.unmatchedOwners.length > 0 && (
             <p style={{ color: '#a60' }}>
-              Still unassigned — fix Allocation Rules and click &quot;Run allocation now&quot; on that tab:{' '}
-              {result.unassignedLanguages.map((s) => `${s.language} (${s.reason})`).join('; ')}
+              These names in the Pre-Sales Agent column didn&apos;t match any user — those leads were left
+              unassigned. Check spelling against Manage Users: {result.unmatchedOwners.join(', ')}
             </p>
           )}
         </div>
@@ -714,7 +715,6 @@ function LeadsTab({
   const agentName = agentFilter !== 'All' && agentFilter !== 'Unassigned'
     ? agents.find((a) => String(a.id) === agentFilter)?.name
     : null;
-  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${agentFilter}|${statusFilter}|${search}`);
 
   return (
     <div style={cardStyle}>
@@ -756,7 +756,7 @@ function LeadsTab({
           </tr>
         </thead>
         <tbody>
-          {pageItems.map((lead) => (
+          {visibleLeads.map((lead) => (
             <tr key={lead.id}>
               <td>{lead.leadCode}</td>
               <td>{lead.name}</td>
@@ -784,7 +784,6 @@ function LeadsTab({
           ))}
         </tbody>
       </table>
-      <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
     </div>
   );
 }

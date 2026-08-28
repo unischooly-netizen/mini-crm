@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { sql } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { allocateUnassignedLeads } from '@/lib/allocation';
 import { logAction } from '@/lib/audit';
 
+// Owner is now specified directly in the upload file — the percentage/
+// language-based auto-allocation engine (lib/allocation.ts) is no longer
+// run automatically from this route. It's still available for manual use
+// elsewhere in the app if ever needed, just not invoked here.
 const FIELD_ALIASES: Record<string, string[]> = {
   name: ['name', 'lead name', 'full name', 'customer name'],
   mobile: ['mobile', 'phone', 'mobile number', 'contact', 'contact number', 'phone number'],
   email: ['email', 'email address', 'e-mail'],
   source: ['source', 'lead source'],
   language: ['language'],
+  owner: ['pre-sales agent', 'presales agent', 'owner', 'agent', 'assigned to'],
 };
 
 function normalizeKey(key: string): string {
@@ -73,9 +77,19 @@ export async function POST(request: NextRequest) {
   `;
   let nextNum = ((maxRows[0] as { maxNum: number })?.maxNum || 0) + 1;
 
+  // Load Pre-Sales Agent users once, matched by name (trim + lowercase),
+  // same approach as the Full Import route.
+  const agentRows = await sql`SELECT id, name FROM users WHERE role = 'presales_agent'`;
+  const agentsByName = new Map<string, number>();
+  for (const u of agentRows as { id: number; name: string }[]) {
+    agentsByName.set(u.name.trim().toLowerCase(), u.id);
+  }
+
   let inserted = 0;
   let skippedDuplicates: string[] = [];
   let skippedBlank = 0;
+  let ownerAssigned = 0;
+  const unmatchedOwners = new Set<string>();
 
   for (const row of rows) {
     const name = pickField(row, FIELD_ALIASES.name);
@@ -83,6 +97,7 @@ export async function POST(request: NextRequest) {
     const email = pickField(row, FIELD_ALIASES.email);
     const source = pickField(row, FIELD_ALIASES.source);
     const language = pickField(row, FIELD_ALIASES.language);
+    const ownerName = pickField(row, FIELD_ALIASES.owner);
 
     if (!name && !mobileRaw) {
       skippedBlank += 1;
@@ -99,9 +114,13 @@ export async function POST(request: NextRequest) {
     const leadCode = `TLS-${String(nextNum).padStart(6, '0')}`;
     nextNum += 1;
 
+    const ownerUserId = ownerName ? agentsByName.get(ownerName.trim().toLowerCase()) ?? null : null;
+    if (ownerName && !ownerUserId) unmatchedOwners.add(ownerName);
+    if (ownerUserId) ownerAssigned += 1;
+
     await sql`
-      INSERT INTO leads (lead_code, name, mobile, email, source, language, assigned_date, status, notes)
-      VALUES (${leadCode}, ${name}, ${mobileRaw}, ${email}, ${source}, ${language}, CURRENT_DATE, 'New', '')
+      INSERT INTO leads (lead_code, name, mobile, email, source, language, assigned_date, owner_user_id, status, notes)
+      VALUES (${leadCode}, ${name}, ${mobileRaw}, ${email}, ${source}, ${language}, CURRENT_DATE, ${ownerUserId}, 'New', '')
     `;
     inserted += 1;
 
@@ -110,15 +129,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const allocationResult = await allocateUnassignedLeads();
-
   await logAction(session, 'UPLOAD_LEADS', 'leads', null, {
     fileRows: rows.length,
     inserted,
     skippedDuplicates: skippedDuplicates.length,
     skippedBlank,
-    allocated: allocationResult.assignments.length,
-    unassignedLanguages: allocationResult.skippedLanguages,
+    ownerAssigned,
+    unmatchedOwners: Array.from(unmatchedOwners),
   });
 
   return NextResponse.json({
@@ -127,7 +144,7 @@ export async function POST(request: NextRequest) {
     inserted,
     skippedDuplicates,
     skippedBlank,
-    allocated: allocationResult.assignments.length,
-    unassignedLanguages: allocationResult.skippedLanguages,
+    ownerAssigned,
+    unmatchedOwners: Array.from(unmatchedOwners),
   });
 }

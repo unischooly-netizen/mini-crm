@@ -29,8 +29,8 @@ export default function DataUploadClient({ userName }: { userName: string }) {
     inserted: number;
     skippedDuplicates: string[];
     skippedBlank: number;
-    allocated: number;
-    unassignedLanguages: { language: string; reason: string }[];
+    ownerAssigned: number;
+    unmatchedOwners: string[];
   } | null>(null);
   const [recentLeads, setRecentLeads] = useState<Lead[]>([]);
 
@@ -81,8 +81,10 @@ export default function DataUploadClient({ userName }: { userName: string }) {
       <div style={cardStyle}>
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload leads (.xlsx or .csv)</h2>
         <p style={{ fontSize: 14, color: '#555' }}>
-          Columns needed: Name, Mobile, Email, Source, Language. Duplicate mobile numbers already in the
-          system are skipped automatically — you&apos;ll see exactly which ones after uploading.
+          Columns needed: Name, Mobile, Email, Source, Language, Pre-Sales Agent. Put the agent&apos;s exact
+          name (as it appears in Manage Users) in the Pre-Sales Agent column to assign the lead directly —
+          leave it blank to leave the lead unassigned. Duplicate mobile numbers already in the system are
+          skipped automatically — you&apos;ll see exactly which ones after uploading.
         </p>
         <form onSubmit={handleUpload}>
           <input
@@ -105,11 +107,11 @@ export default function DataUploadClient({ userName }: { userName: string }) {
               Skipped duplicates: {result.skippedDuplicates.length}
               {result.skippedDuplicates.length > 0 ? ` (${result.skippedDuplicates.join(', ')})` : ''}
             </p>
-            <p>Allocated to an agent just now: {result.allocated}</p>
-            {result.unassignedLanguages.length > 0 && (
+            <p>Assigned to an agent: {result.ownerAssigned}</p>
+            {result.unmatchedOwners.length > 0 && (
               <p style={{ color: '#a60' }}>
-                Some leads are still unassigned — ask an admin to check Allocation Rules:{' '}
-                {result.unassignedLanguages.map((s) => `${s.language} (${s.reason})`).join('; ')}
+                These names in the Pre-Sales Agent column didn&apos;t match any user — those leads were
+                left unassigned. Check spelling against Manage Users: {result.unmatchedOwners.join(', ')}
               </p>
             )}
           </div>

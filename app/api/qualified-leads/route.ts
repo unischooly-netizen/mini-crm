@@ -51,13 +51,13 @@ export async function GET(request: NextRequest) {
   const extra = viewClause(view);
 
   if (session.role === 'admin' || session.role === 'data_team') {
-    const rows = await sql.query(`SELECT ${SELECT} ${extra} ${ORDER_BY} LIMIT 2000`, []);
+    const rows = await sql.query(`SELECT ${SELECT} ${extra} ${ORDER_BY} LIMIT 500000`, []);
     return NextResponse.json({ leads: rows, scope: 'all', view });
   }
 
   if (session.role === 'vertical_head') {
     const rows = await sql.query(
-      `SELECT ${SELECT} AND l.assigned_vh_user_id = $1 ${extra} ${ORDER_BY} LIMIT 2000`,
+      `SELECT ${SELECT} AND l.assigned_vh_user_id = $1 ${extra} ${ORDER_BY} LIMIT 500000`,
       [session.id]
     );
     return NextResponse.json({ leads: rows, scope: 'vh', view });
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 
   if (session.role === 'sales_counsellor') {
     const rows = await sql.query(
-      `SELECT ${SELECT} AND l.assigned_counsellor_user_id = $1 ${extra} ${ORDER_BY} LIMIT 2000`,
+      `SELECT ${SELECT} AND l.assigned_counsellor_user_id = $1 ${extra} ${ORDER_BY} LIMIT 500000`,
       [session.id]
     );
     return NextResponse.json({ leads: rows, scope: 'counsellor', view });
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
   if (session.role === 'presales_agent') {
     const rows = await sql.query(
-      `SELECT ${SELECT} AND l.owner_user_id = $1 ${extra} ${ORDER_BY} LIMIT 2000`,
+      `SELECT ${SELECT} AND l.owner_user_id = $1 ${extra} ${ORDER_BY} LIMIT 500000`,
       [session.id]
     );
     return NextResponse.json({ leads: rows, scope: 'own', view });
