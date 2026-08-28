@@ -51,6 +51,65 @@ const ATTEMPT_TODAY_SUM = Array.from(
 
 type Stats = Record<string, number>;
 
+const ATTENTION_LIMIT = 5;
+
+async function getAttention(role: string, userId: number, today: string): Promise<string[]> {
+  if (role === 'presales_agent') {
+    const rows = await sql.query(
+      `(SELECT lead_code AS code, 'follow-up overdue since ' || next_followup_date::text AS why
+        FROM leads WHERE owner_user_id = $1 AND next_followup_date < $2 AND status <> 'Not Qualified'
+        ORDER BY next_followup_date ASC LIMIT ${ATTENTION_LIMIT})
+       UNION ALL
+       (SELECT lead_code AS code, 'qualified but no meeting booked yet' AS why
+        FROM leads WHERE owner_user_id = $1 AND qualification_status = 'Qualified' AND meeting_date IS NULL
+        LIMIT ${ATTENTION_LIMIT})`,
+      [userId, today]
+    );
+    return (rows as { code: string; why: string }[]).map((r) => `${r.code}: ${r.why}`);
+  }
+  if (role === 'vertical_head') {
+    const rows = await sql.query(
+      `SELECT lead_code AS code
+       FROM leads WHERE assigned_vh_user_id = $1 AND assigned_counsellor_user_id IS NULL
+       ORDER BY qualified_at ASC NULLS LAST LIMIT ${ATTENTION_LIMIT}`,
+      [userId]
+    );
+    return (rows as { code: string }[]).map((r) => `${r.code}: qualified, still waiting on a counsellor assignment`);
+  }
+  if (role === 'sales_counsellor') {
+    const rows = await sql.query(
+      `(SELECT lead_code AS code, 'follow-up overdue since ' || next_followup_date::text AS why
+        FROM leads WHERE assigned_counsellor_user_id = $1 AND next_followup_date < $2
+        ORDER BY next_followup_date ASC LIMIT ${ATTENTION_LIMIT})
+       UNION ALL
+       (SELECT lead_code AS code, 'meeting was rescheduled but no new date/time set yet' AS why
+        FROM leads WHERE assigned_counsellor_user_id = $1 AND connecting_status = 'Rescheduled' AND next_meeting_date IS NULL
+        LIMIT ${ATTENTION_LIMIT})
+       UNION ALL
+       (SELECT lead_code AS code, 'trial was rescheduled but no new date/time set yet' AS why
+        FROM leads WHERE assigned_counsellor_user_id = $1 AND trial_status = 'Rescheduled' AND next_trial_date IS NULL
+        LIMIT ${ATTENTION_LIMIT})
+       UNION ALL
+       (SELECT lead_code AS code, 'trial is done but admission decision is still pending' AS why
+        FROM leads WHERE assigned_counsellor_user_id = $1 AND trial_status = 'Trial Done' AND admission_status = 'Pending'
+        LIMIT ${ATTENTION_LIMIT})`,
+      [userId, today]
+    );
+    return (rows as { code: string; why: string }[]).map((r) => `${r.code}: ${r.why}`);
+  }
+  // admin / data_team — worst overdue follow-ups across the whole team
+  const rows = await sql.query(
+    `SELECT l.lead_code AS code, u.name AS owner, l.next_followup_date::text AS due
+     FROM leads l LEFT JOIN users u ON u.id = l.owner_user_id
+     WHERE l.next_followup_date < $1 AND l.status <> 'Not Qualified'
+     ORDER BY l.next_followup_date ASC LIMIT ${ATTENTION_LIMIT}`,
+    [today]
+  );
+  return (rows as { code: string; owner: string | null; due: string }[]).map(
+    (r) => `${r.code} (${r.owner || 'unassigned'}): follow-up overdue since ${r.due}`
+  );
+}
+
 async function getStats(role: string, userId: number, today: string): Promise<Stats> {
   if (role === 'presales_agent') {
     const rows = await sql.query(
@@ -119,7 +178,7 @@ function statsToPlainEnglish(role: string, s: Stats): string {
   return `Org-wide today: ${s.calls_today} calls, ${s.meetings_today} meetings, ${s.qualified_today} qualified, ${s.admissions_won_today} admissions won. ${s.total_leads} leads total in the system.`;
 }
 
-function systemPrompt(name: string, role: string, s: Stats, onShift: boolean, timeLabel: string): string {
+function systemPrompt(name: string, role: string, s: Stats, attention: string[], onShift: boolean, timeLabel: string): string {
   const roleLabel: Record<string, string> = {
     presales_agent: 'Pre-Sales Agent',
     vertical_head: 'Vertical Head',
@@ -127,12 +186,17 @@ function systemPrompt(name: string, role: string, s: Stats, onShift: boolean, ti
     admin: 'Admin',
     data_team: 'Data Team',
   };
+  const attentionText = attention.length
+    ? `Leads that need attention right now (mention their lead ID exactly as written when relevant):\n${attention.map((a) => `- ${a}`).join('\n')}`
+    : `Nothing flagged as needing attention right now — everything under ${name} looks up to date.`;
   return `You are Mr Shifu, a friendly Shih Tzu dog who lives inside a CRM app called mini-crm, used by a sales team. You are talking to ${name}, who is a ${roleLabel[role] || role}. You are warm, playful, upbeat and encouraging like a loyal dog companion, but you are ALSO effectively their manager: you know their work numbers, you gently keep them accountable, and you help them stay on top of follow-ups. Keep replies short (2-4 sentences), conversational, plain simple English, occasional light dog-ish flavor (a "woof" or tail-wag energy) but never childish or annoying, and never use complicated business jargon. It is currently ${timeLabel} IST. ${onShift ? "You are on shift right now (10am-7pm IST, Mon-Sat)." : "You are currently off shift (shift is 10am-7pm IST, Monday to Saturday) — you can still chat and answer questions, just mention briefly that you're off the clock if it's relevant, without refusing to help."}
 
-Here is ${name}'s real, live data right now — always use these exact numbers, never make numbers up:
+Here is ${name}'s real, live data right now — always use these exact numbers and lead IDs, never invent or guess any number, name, or lead ID that isn't given to you below:
 ${statsToPlainEnglish(role, s)}
 
-Your job: celebrate wins, nudge gently on what's overdue (like follow-ups due), answer any question about their numbers using the data above, and be a supportive presence. If asked something outside your knowledge of this data, be honest that you only track their CRM activity.`;
+${attentionText}
+
+Your job: celebrate wins, nudge gently on what's overdue or missing (naming the specific lead ID when you have one), answer questions about their numbers using only the data above, and be a supportive presence. Stay strictly on the topic of their CRM work — leads, calls, meetings, trials, admissions, follow-ups, their team. If asked something unrelated to their work in this CRM (general knowledge, other topics, anything you have no data for), gently redirect back to work in one short friendly line rather than answering it, since your whole job here is to be their work companion, not a general chatbot.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -149,23 +213,26 @@ export async function POST(request: NextRequest) {
   const onShift = isOnShift();
 
   let stats: Stats;
+  let attention: string[];
   try {
     stats = await getStats(session.role, session.id, today);
+    attention = await getAttention(session.role, session.id, today);
   } catch (err) {
     console.error('Mr Shifu stats query failed:', err);
     return NextResponse.json({ error: 'Could not load your stats right now.' }, { status: 500 });
   }
 
+  const attentionLine = attention.length ? ` Heads up: ${attention[0]}.` : '';
   const fallbackReply = body.nudge
-    ? `Hey ${session.name.split(' ')[0]}! ${statsToPlainEnglish(session.role, stats)}`
-    : statsToPlainEnglish(session.role, stats);
+    ? `Hey ${session.name.split(' ')[0]}! ${statsToPlainEnglish(session.role, stats)}${attentionLine}`
+    : `${statsToPlainEnglish(session.role, stats)}${attentionLine}`;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ reply: fallbackReply, stats });
   }
 
-  const prompt = systemPrompt(session.name, session.role, stats, onShift, timeLabel);
+  const prompt = systemPrompt(session.name, session.role, stats, attention, onShift, timeLabel);
   const history = (body.history || []).slice(-12);
   const contents = [
     ...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })),
@@ -184,7 +251,15 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents,
-          generationConfig: { temperature: 0.8, maxOutputTokens: 220 },
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 500,
+            // Newer Gemini models "think" before answering by default, which was
+            // silently eating the reply and leaving only a stray fragment — this
+            // model doesn't need deep reasoning for a short friendly chat reply,
+            // so thinking is switched off entirely for speed and reliability.
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
       }
     );
@@ -193,7 +268,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ reply: fallbackReply, stats });
     }
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // A reply can come back as several parts (rare, but happens) — join every
+    // non-thought text part rather than trusting parts[0] alone, which is what
+    // produced the truncated/garbled fragments seen before this fix.
+    const parts = data?.candidates?.[0]?.content?.parts as { text?: string; thought?: boolean }[] | undefined;
+    const text = parts
+      ?.filter((p) => !p.thought && p.text)
+      .map((p) => p.text)
+      .join('')
+      .trim();
+    const finishReason = data?.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.error('Gemini finished abnormally:', finishReason, JSON.stringify(data).slice(0, 500));
+    }
     return NextResponse.json({ reply: text || fallbackReply, stats });
   } catch (err) {
     console.error('Gemini call threw:', err);
