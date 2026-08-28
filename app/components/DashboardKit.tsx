@@ -38,18 +38,20 @@ export function FilterField({ label, children }: { label: string; children: Reac
 }
 
 export const selectStyle: React.CSSProperties = {
-  padding: '6px 8px',
-  borderRadius: 4,
-  border: '1px solid #ccc',
+  padding: '8px 10px',
+  borderRadius: 8,
+  border: '1px solid #e3e5f0',
+  background: '#f9f9fc',
   fontSize: 13,
 };
 
 export const cardStyle: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #e2e2e2',
-  borderRadius: 8,
-  padding: 16,
+  border: '1px solid #e9ebf3',
+  borderRadius: 14,
+  padding: 18,
   marginBottom: 16,
+  boxShadow: '0 1px 3px rgba(16, 20, 42, 0.04)',
 };
 
 // Chart palette — reused across pie/bar charts so colors stay consistent
@@ -85,10 +87,11 @@ export function DashboardsMenu() {
         router.push(e.target.value);
       }}
       style={{
-        padding: '8px 10px',
-        border: isActive ? '1px solid #111' : '1px solid #ccc',
-        borderRadius: 4,
-        background: '#fff',
+        padding: '8px 12px',
+        border: isActive ? '1.5px solid #3c4faa' : '1px solid #e3e5f0',
+        borderRadius: 8,
+        background: isActive ? '#eef0fb' : '#fff',
+        color: isActive ? '#232c52' : '#10142a',
         cursor: 'pointer',
         fontWeight: isActive ? 600 : 400,
         fontSize: 14,
@@ -166,10 +169,11 @@ export function Pager({ page, totalPages, totalItems, onChange }: {
 
 const pagerButtonStyle: React.CSSProperties = {
   padding: '6px 14px',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  border: '1px solid #e3e5f0',
+  borderRadius: 8,
   background: '#fff',
-  color: '#111',
+  color: '#232c52',
   fontSize: 13,
+  fontWeight: 600,
 };
 
