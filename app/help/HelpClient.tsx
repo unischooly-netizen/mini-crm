@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import BrandHeader from '@/app/components/BrandHeader';
-import ThemeToggle from '@/app/components/ThemeToggle';
+import { BrandHeader } from '@/app/components/BrandHeader';
+import { ThemeToggle } from '@/app/components/ThemeToggle';
 
 type Role = 'admin' | 'data_team' | 'presales_agent' | 'vertical_head' | 'sales_counsellor';
 
