@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { ThemeToggle } from '@/app/components/ThemeToggle';
+import MrShifu from '@/app/components/MrShifu';
 import { formatDateTime } from '@/lib/format';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
 import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
