@@ -210,7 +210,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="login-footer">Unischooly &middot; Presales CRM</p>
+        <p className="login-footer">Team Sarah &middot; Presales CRM</p>
       </div>
     </div>
   );
