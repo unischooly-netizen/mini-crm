@@ -40,14 +40,15 @@ export function FilterField({ label, children }: { label: string; children: Reac
 export const selectStyle: React.CSSProperties = {
   padding: '5px 6px',
   borderRadius: 6,
-  border: '1px solid #e3e5f0',
-  background: '#fff',
+  border: '1px solid var(--input-border)',
+  background: 'var(--card-bg)',
+  color: 'var(--fg)',
   fontSize: 13,
 };
 
 export const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e9ebf3',
+  background: 'var(--card-bg)',
+  border: '1px solid var(--card-border)',
   borderRadius: 14,
   padding: 18,
   marginBottom: 16,
@@ -88,13 +89,14 @@ export function DashboardsMenu() {
       }}
       style={{
         padding: '8px 12px',
-        border: isActive ? '1.5px solid #3c4faa' : '1px solid #e3e5f0',
+        border: isActive ? '1.5px solid var(--accent)' : '1px solid var(--input-border)',
         borderRadius: 8,
-        background: isActive ? '#eef0fb' : '#fff',
-        color: isActive ? '#232c52' : '#10142a',
+        background: 'var(--card-bg)',
+        color: isActive ? 'var(--accent-dark)' : 'var(--fg)',
         cursor: 'pointer',
         fontWeight: isActive ? 600 : 400,
         fontSize: 14,
+        maxWidth: '100%',
       }}
     >
       <option value="">Dashboards ▾</option>
@@ -153,7 +155,7 @@ export function Pager({ page, totalPages, totalItems, onChange }: {
       >
         ← Prev
       </button>
-      <span style={{ fontSize: 13, color: '#555' }}>
+      <span style={{ fontSize: 13, color: 'var(--muted)' }}>
         Showing {start}–{end} of {totalItems} · Page {page} of {totalPages}
       </span>
       <button
@@ -169,11 +171,10 @@ export function Pager({ page, totalPages, totalItems, onChange }: {
 
 const pagerButtonStyle: React.CSSProperties = {
   padding: '6px 14px',
-  border: '1px solid #e3e5f0',
+  border: '1px solid var(--input-border)',
   borderRadius: 8,
-  background: '#fff',
-  color: '#232c52',
+  background: 'var(--card-bg)',
+  color: 'var(--accent-dark)',
   fontSize: 13,
   fontWeight: 600,
 };
-
