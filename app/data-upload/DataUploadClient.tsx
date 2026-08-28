@@ -2,10 +2,6 @@
 
 import { BrandHeader } from '@/app/components/BrandHeader';
 import { ThemeToggle } from '@/app/components/ThemeToggle';
-import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
-import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
-import { formatDateTime } from '@/lib/format';
-import Link from 'next/link';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -19,53 +15,35 @@ type Lead = {
   source: string;
   language: string;
   assignedDate: string;
+  ownerName: string | null;
   status: string;
-  qualificationStatus?: string;
-  nextFollowupDate?: string | null;
-  nextFollowupTime?: string | null;
-  notes: string;
+  createdAt: string;
 };
 
-const PIPELINE_TABS = ['All', 'New', 'Not Picked', 'Follow-up Needed', 'Qualified', 'Not Qualified'];
-
-export default function DashboardClient({ agentName }: { agentName: string }) {
+export default function DataUploadClient({ userName }: { userName: string }) {
   const router = useRouter();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [search, setSearch] = useState('');
-  const [loadError, setLoadError] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{
+    rowsInFile: number;
+    inserted: number;
+    skippedDuplicates: string[];
+    skippedBlank: number;
+    ownerAssigned: number;
+    unmatchedOwners: string[];
+  } | null>(null);
+  const [recentLeads, setRecentLeads] = useState<Lead[]>([]);
 
-  const loadLeads = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setLoadError('');
-    try {
-      const res = await fetch('/api/leads');
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLoadError(data.error || `Could not load leads (server said: ${res.status}).`);
-        if (!silent) setLeads([]);
-        return;
-      }
-      setLeads(data.leads || []);
-    } catch {
-      if (!silent) {
-        setLoadError('Could not reach the server. Check your connection and try again.');
-        setLeads([]);
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
+  const loadRecent = useCallback(async () => {
+    const res = await fetch('/api/leads');
+    const data = await res.json();
+    setRecentLeads((data.leads || []).slice(0, 50));
   }, []);
 
   useEffect(() => {
-    loadLeads();
-  }, [loadLeads]);
-
-  useEffect(() => {
-    const interval = setInterval(() => loadLeads(true), 25000);
-    return () => clearInterval(interval);
-  }, [loadLeads]);
+    loadRecent();
+  }, [loadRecent]);
 
   async function handleLogout() {
     await fetch('/api/logout', { method: 'POST' });
@@ -73,133 +51,124 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
     router.refresh();
   }
 
-  const bySearch = (l: Lead) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      l.leadCode?.toLowerCase().includes(q) ||
-      l.name?.toLowerCase().includes(q) ||
-      l.mobile?.toLowerCase().includes(q) ||
-      l.email?.toLowerCase().includes(q)
-    );
-  };
-  const visibleLeads = (statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter)).filter(bySearch);
-  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${statusFilter}|${search}`);
-
-  const counts = PIPELINE_TABS.reduce<Record<string, number>>((acc, s) => {
-    acc[s] = s === 'All' ? leads.length : leads.filter((l) => l.status === s).length;
-    return acc;
-  }, {});
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file) {
+      setError('Choose a file first.');
+      return;
+    }
+    setError('');
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    setUploading(false);
+    if (!res.ok) {
+      setError(data.error || 'Upload failed.');
+      return;
+    }
+    setResult(data);
+    loadRecent();
+  }
 
   return (
-    <div className="page-shell" style={{ maxWidth: '96vw', margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
+    <div className="page-shell" style={{ maxWidth: 1000, margin: '0 auto', padding: 20, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <BrandHeader subtitle={`My Leads — ${agentName}`} />
+        <BrandHeader subtitle={`Data Upload — ${userName}`} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ThemeToggle />
           <button onClick={handleLogout} style={secondaryButtonStyle}>Log out</button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <NavTab active>Leads</NavTab>
-        <Link href="/qualified-leads" style={navLinkStyle}>Qualified Leads</Link>
-        <Link href="/qualified-leads?view=reschedule" style={navLinkStyle}>Reschedule Pending</Link>
-        <DashboardsMenu />
+      <div style={cardStyle}>
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Upload leads (.xlsx or .csv)</h2>
+        <p style={{ fontSize: 14, color: 'var(--muted)' }}>
+          Columns needed: Name, Mobile, Email, Source, Language, Pre-Sales Agent. Put the agent&apos;s exact
+          name (as it appears in Manage Users) in the Pre-Sales Agent column to assign the lead directly —
+          leave it blank to leave the lead unassigned. Duplicate mobile numbers already in the system are
+          skipped automatically — you&apos;ll see exactly which ones after uploading.
+        </p>
+        <form onSubmit={handleUpload}>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            style={{ marginBottom: 12, maxWidth: '100%' }}
+          />
+          <br />
+          <button type="submit" disabled={uploading} style={primaryButtonStyle}>
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </form>
+        {error && <p style={{ color: 'crimson' }}>{error}</p>}
+        {result && (
+          <div style={{ marginTop: 16, background: '#e6f6ea', border: '1px solid #cdeed6', padding: 14, borderRadius: 10, color: '#0a3d1c' }}>
+            <p>Rows in file: {result.rowsInFile}</p>
+            <p>Leads added: {result.inserted}</p>
+            <p>
+              Skipped duplicates: {result.skippedDuplicates.length}
+              {result.skippedDuplicates.length > 0 ? ` (${result.skippedDuplicates.join(', ')})` : ''}
+            </p>
+            <p>Assigned to an agent: {result.ownerAssigned}</p>
+            {result.unmatchedOwners.length > 0 && (
+              <p style={{ color: '#a60' }}>
+                These names in the Pre-Sales Agent column didn&apos;t match any user — those leads were
+                left unassigned. Check spelling against Manage Users: {result.unmatchedOwners.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        {PIPELINE_TABS.map((s) => (
-          <FilterButton key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-            {s} ({counts[s] || 0})
-          </FilterButton>
-        ))}
-      </div>
-      <input
-        type="text"
-        placeholder="Search by lead code, name, mobile, or email…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ padding: '9px 12px', fontSize: 14, border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)', borderRadius: 8, width: '100%', maxWidth: 320, marginBottom: 16, boxSizing: 'border-box' }}
-      />
-
-      {loading ? (
-        <p>Loading…</p>
-      ) : loadError ? (
-        <p style={{ color: 'crimson' }}>{loadError}</p>
-      ) : visibleLeads.length === 0 ? (
-        <p>No leads here yet.</p>
-      ) : (
+      <div style={cardStyle}>
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Recently uploaded leads</h2>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th>
-                <th>Status</th><th>Next Follow-up</th><th></th>
+                <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th><th>Owner</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((lead) => (
+              {recentLeads.map((lead) => (
                 <tr key={lead.id}>
                   <td>{lead.leadCode}</td>
                   <td>{lead.name}</td>
                   <td>{lead.mobile}</td>
                   <td>{lead.language}</td>
-                  <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
-                  <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
-                    {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
-                  </td>
-                  <td><Link href={`/leads/${lead.id}`}>Open</Link></td>
+                  <td>{lead.ownerName || 'Unassigned'}</td>
+                  <td>{lead.status}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-      <Pager page={page} totalPages={totalPages} totalItems={visibleLeads.length} onChange={setPage} />
+      </div>
     </div>
   );
 }
 
-function NavTab({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        padding: '7px 16px',
-        border: active ? 'none' : '1px solid var(--input-border)',
-        borderRadius: 8,
-        background: active ? 'linear-gradient(135deg, var(--accent-dark), var(--accent))' : 'var(--card-bg)',
-        color: active ? '#fff' : 'var(--accent-dark)',
-        fontSize: 14,
-        fontWeight: active ? 600 : 500,
-        display: 'inline-block',
-        boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
-      }}
-    >
-      {children}
-    </span>
-  );
-}
+const cardStyle: React.CSSProperties = {
+  background: 'var(--card-bg)',
+  border: '1px solid var(--card-border)',
+  borderRadius: 14,
+  padding: 20,
+  marginBottom: 20,
+  boxShadow: '0 1px 3px rgba(16, 20, 42, 0.04)',
+};
 
-function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: '6px 14px',
-        border: active ? 'none' : '1px solid var(--input-border)',
-        borderRadius: 8,
-        background: active ? 'linear-gradient(135deg, var(--accent-dark), var(--accent))' : 'var(--card-bg)',
-        color: active ? '#fff' : 'var(--accent-dark)',
-        cursor: 'pointer',
-        fontWeight: active ? 600 : 500,
-        boxShadow: active ? '0 4px 12px rgba(60, 79, 170, 0.25)' : 'none',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
+const primaryButtonStyle: React.CSSProperties = {
+  padding: '9px 16px',
+  background: 'linear-gradient(135deg, var(--accent-dark), var(--accent))',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  cursor: 'pointer',
+  fontWeight: 600,
+  boxShadow: '0 4px 12px rgba(60, 79, 170, 0.25)',
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   padding: '7px 14px',
@@ -209,15 +178,4 @@ const secondaryButtonStyle: React.CSSProperties = {
   borderRadius: 8,
   cursor: 'pointer',
   fontWeight: 500,
-};
-
-const navLinkStyle: React.CSSProperties = {
-  padding: '7px 16px',
-  border: '1px solid var(--input-border)',
-  borderRadius: 8,
-  background: 'var(--card-bg)',
-  color: 'var(--accent-dark)',
-  fontSize: 14,
-  fontWeight: 500,
-  textDecoration: 'none',
 };
