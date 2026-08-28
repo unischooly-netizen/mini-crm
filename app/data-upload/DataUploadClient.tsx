@@ -100,7 +100,7 @@ export default function DataUploadClient({ userName }: { userName: string }) {
         </form>
         {error && <p style={{ color: 'crimson' }}>{error}</p>}
         {result && (
-          <div style={{ marginTop: 16, background: '#f0f8f0', padding: 12, borderRadius: 4 }}>
+          <div style={{ marginTop: 16, background: '#e6f6ea', border: '1px solid #cdeed6', padding: 14, borderRadius: 10 }}>
             <p>Rows in file: {result.rowsInFile}</p>
             <p>Leads added: {result.inserted}</p>
             <p>
@@ -146,26 +146,30 @@ export default function DataUploadClient({ userName }: { userName: string }) {
 
 const cardStyle: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #ddd',
-  borderRadius: 6,
-  padding: 16,
+  border: '1px solid #e9ebf3',
+  borderRadius: 14,
+  padding: 20,
   marginBottom: 20,
+  boxShadow: '0 1px 3px rgba(16, 20, 42, 0.04)',
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: '8px 14px',
-  background: '#111',
+  padding: '9px 16px',
+  background: 'linear-gradient(135deg, #232c52, #3c4faa)',
   color: '#fff',
   border: 'none',
-  borderRadius: 4,
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 600,
+  boxShadow: '0 4px 12px rgba(60, 79, 170, 0.25)',
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
+  padding: '7px 14px',
   background: '#fff',
-  color: '#111',
-  border: '1px solid #ccc',
-  borderRadius: 4,
+  color: '#232c52',
+  border: '1px solid #d8dae8',
+  borderRadius: 8,
   cursor: 'pointer',
+  fontWeight: 500,
 };
