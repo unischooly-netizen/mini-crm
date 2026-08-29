@@ -308,15 +308,25 @@ export type LatestQualification = {
 /**
  * Phase B.3 addition — the single most recent qualification EVENT across
  * all leads, ever, using qualified_at (the authoritative historical
- * timestamp stamped once when a lead is qualified — see
+ * timestamp for the LATEST recorded qualification transition — see
  * lib/performanceMetrics.ts's field-definitions header) rather than
  * inferring anything from the CURRENT qualification_status column. A
- * lead's status can change after qualification (e.g. corrected later to
- * Not Qualified), but qualified_at is never rewritten, so it's the only
- * reliable "when was the last one" signal. Deliberately unfiltered by
- * date — this answers "when was the last qualification, period", not
- * "how many were qualified on date X" (see getDailyQualificationBreakdown
- * below for that). Returns null if no lead has ever been qualified.
+ * lead's qualification_status can change after qualification (e.g.
+ * reverted to Not Qualified, then requalified later) — qualified_at is
+ * NOT frozen at the first-ever event; it is re-stamped by
+ * computeQualifiedAt() (lib/leadLogic.ts) every time a lead transitions
+ * from non-Qualified back into Qualified, which is exactly why it's the
+ * right field for "when was the last one" (corrected Aug 2026 — an
+ * earlier version of this comment incorrectly said qualified_at "is
+ * never rewritten"; that was true of the column's nullability but not of
+ * its update semantics — see computeQualifiedAt()'s doc comment for the
+ * confirmed V1 semantic). Deliberately unfiltered by date — this answers
+ * "when was the last qualification, period", not "how many were
+ * qualified on date X" (see getDailyQualificationBreakdown below for
+ * that). Returns null if no lead has a recorded qualified_at (which is
+ * NOT the same as "no lead has ever been qualified" — see the
+ * getUntimedQualifiedLeadCount() caveat below and its use in
+ * deterministic-answers.ts).
  *
  * OWNER ATTRIBUTION CAVEAT (Phase B.3.1, verified against real code, not
  * assumed): ownerUserId/ownerName here come from owner_user_id, which is
@@ -361,6 +371,26 @@ export async function getLatestQualification(): Promise<LatestQualification | nu
 }
 
 export type QualificationOwnerRow = { ownerUserId: number | null; ownerName: string | null; qualifiedCount: number };
+/**
+ * Diagnostic addition (Aug 2026 pass) — how many leads are CURRENTLY
+ * qualification_status = 'Qualified' but have no qualified_at timestamp
+ * on record at all. This is the signal that distinguishes "genuinely
+ * zero qualification events" from "we can't tell, because the historical
+ * timestamp data has a known gap" — see the root-cause comment in
+ * app/api/leads/full-import/route.ts (leads migrated from the old
+ * spreadsheet CRM never had qualified_at populated, since no reliable
+ * source timestamp existed for that transition). A nonzero result here
+ * means any "0 qualified" result elsewhere cannot be presented as a
+ * verified historical fact — see rangeMismatchNote-style honesty guards
+ * in deterministic-answers.ts for the same principle applied here.
+ */
+export async function getUntimedQualifiedLeadCount(): Promise<number> {
+  const rows = (await sql.query(
+    `SELECT COUNT(*)::int AS count FROM leads WHERE qualification_status = 'Qualified' AND qualified_at IS NULL`
+  )) as { count: number }[];
+  return Number(rows[0]?.count) || 0;
+}
+
 
 /**
  * Phase B.3 addition — how many leads were qualified within a given IST

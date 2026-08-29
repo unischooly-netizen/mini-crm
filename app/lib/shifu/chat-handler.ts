@@ -65,6 +65,10 @@ export type ShifuChatResponse = {
   // DAILY_QUALIFICATION_COUNT respectively.
   latestQualification?: DeterministicResult['latestQualification'];
   totalQualified?: DeterministicResult['totalQualified'];
+  // Aug 2026 diagnostic-pass addition — explicit data-quality signal, see
+  // DeterministicResult's doc comment in deterministic-answers.ts.
+  dataQuality?: DeterministicResult['dataQuality'];
+  untimedQualifiedCount?: DeterministicResult['untimedQualifiedCount'];
 };
 
 const CASUAL_FALLBACKS: Record<'CASUAL_CHAT' | 'WELLNESS', string> = {
@@ -230,6 +234,8 @@ export async function handleShifuChat(
       totals: result.totals,
       latestQualification: result.latestQualification,
       totalQualified: result.totalQualified,
+      dataQuality: result.dataQuality,
+      untimedQualifiedCount: result.untimedQualifiedCount,
     };
   }
 

@@ -45,6 +45,7 @@ import {
   getAttentionItems,
   getLatestQualification,
   getDailyQualificationBreakdown,
+  getUntimedQualifiedLeadCount,
   type DateRange,
   type AdminView,
   type LatestQualification,
@@ -57,7 +58,7 @@ import { fetchAllLeadsRich } from '@/lib/performanceMetrics';
 
 export type DeterministicSource = 'verified_crm' | 'permission_denied' | 'not_found' | 'ambiguous' | 'unsupported' | 'no_gemini_needed';
 
-export type PresalesAgentBreakdownRow = { userId: number | null; name: string; calls: number; qualified: number };
+export type PresalesAgentBreakdownRow = { userId: number | null; name: string; calls: number; qualified: number | null };
 
 export type DeterministicResult = {
   text: string;
@@ -69,10 +70,19 @@ export type DeterministicResult = {
   // Phase B.2 addition — only populated by presalesAgentBreakdown(), so
   // every other intent's result leaves these undefined.
   rows?: PresalesAgentBreakdownRow[] | QualificationOwnerRow[];
-  totals?: { calls: number; qualified: number };
+  totals?: { calls: number; qualified: number | null };
   // Phase B.3 additions — only populated by their respective functions.
   latestQualification?: LatestQualification;
   totalQualified?: number;
+  // Aug 2026 diagnostic-pass addition — set only when a qualification
+  // answer could NOT be verified because of the known qualified_at
+  // history gap (see getUntimedQualifiedLeadCount() in context.ts). When
+  // present, `rows`/`totals`/`totalQualified`/`latestQualification` are
+  // deliberately left undefined for that response — this field is the
+  // explicit signal that a missing/zero-looking result is a data-quality
+  // gap, not a verified fact.
+  dataQuality?: 'unavailable';
+  untimedQualifiedCount?: number;
 };
 
 export function resolveRange(label: RangeLabel, explicitDate?: string): DateRange {
@@ -310,9 +320,25 @@ async function ownNextAction(session: ShifuSession, rangeLabel: RangeLabel): Pro
 // Admin cross-user intelligence — PERSON_PERFORMANCE / TEAM_COMPARISON.
 // ---------------------------------------------------------------------------
 
-function headlineMetrics(role: Role, view: AdminView): string {
+/**
+ * Phase B.3.3 addition: `untimedQualifiedCount` is computed once by the
+ * caller (personPerformance/teamComparison) — not fetched inside this
+ * function — so it stays a pure, synchronous formatter with no DB access
+ * of its own, matching every other caller in this file. A value of 0
+ * (the default for roles other than presales_agent, and for
+ * presales_agent when qualifiedInRange is already nonzero) is a no-op:
+ * the branch below only changes wording when BOTH the range's own
+ * qualified count would read as zero AND the system-wide untimed-gap
+ * count is nonzero — a genuine nonzero qualifiedInRange is always shown
+ * as-is, full confidence, regardless of the untimed count elsewhere.
+ */
+export function headlineMetrics(role: Role, view: AdminView, untimedQualifiedCount: number): string {
   if (role === 'presales_agent') {
-    return `made ${view.period.callsInRange} calls with ${view.period.connectedCallsInRange} connects and qualified ${view.period.qualifiedInRange} lead${view.period.qualifiedInRange === 1 ? '' : 's'}`;
+    const qualifiedInRange = view.period.qualifiedInRange;
+    if (qualifiedInRange === 0 && untimedQualifiedCount > 0) {
+      return `made ${view.period.callsInRange} calls with ${view.period.connectedCallsInRange} connects (qualification history unavailable for this period — some currently-Qualified leads have no recorded qualification timestamp, a known historical data gap)`;
+    }
+    return `made ${view.period.callsInRange} calls with ${view.period.connectedCallsInRange} connects and qualified ${qualifiedInRange} lead${qualifiedInRange === 1 ? '' : 's'}`;
   }
   if (role === 'sales_counsellor') {
     return `completed ${view.period.meetingsDoneInRange} meetings, ${view.period.trialsDoneInRange} trials, and closed ${view.period.admissionsWonInRange} admission${view.period.admissionsWonInRange === 1 ? '' : 's'} won`;
@@ -365,8 +391,22 @@ async function personPerformance(session: ShifuSession, name: string, range: Dat
   if (!view) {
     return { text: `${personName} is ${ROLE_LABEL_SHORT[role]} — I don't track individual performance numbers for that role yet.`, facts: null, source: 'unsupported' };
   }
-  const text = `${personName} ${headlineMetrics(role, view)}, ${rangeWords}.`;
-  return { text, facts: { name: personName, role, ...view }, source: 'verified_crm', subject: { type: 'user', id: resolved.id, name: personName, role } };
+  // Phase B.3.3 fix (item 3): same principle as presalesAgentBreakdown()/
+  // rolePerformance() — only worth the extra query when this specific
+  // person's qualifiedInRange would otherwise read as an unverifiable
+  // zero, and only relevant at all for presales_agent (the only role
+  // headlineMetrics reports a qualified count for).
+  const untimedCount = role === 'presales_agent' && view.period.qualifiedInRange === 0 ? await getUntimedQualifiedLeadCount() : 0;
+  const qualificationUnavailable = role === 'presales_agent' && view.period.qualifiedInRange === 0 && untimedCount > 0;
+  const text = `${personName} ${headlineMetrics(role, view, untimedCount)}, ${rangeWords}.`;
+  return {
+    text,
+    facts: { name: personName, role, ...view },
+    source: 'verified_crm',
+    subject: { type: 'user', id: resolved.id, name: personName, role },
+    dataQuality: qualificationUnavailable ? 'unavailable' : undefined,
+    untimedQualifiedCount: qualificationUnavailable ? untimedCount : undefined,
+  };
 }
 
 async function teamComparison(session: ShifuSession, names: [string, string], range: DateRange, rangeWords: string): Promise<DeterministicResult> {
@@ -389,11 +429,24 @@ async function teamComparison(session: ShifuSession, names: [string, string], ra
   if (!pa.view || !pb.view) {
     return { text: "I don't have comparable performance numbers for one or both of those roles yet.", facts: null, source: 'unsupported' };
   }
-  const text = `${pa.name} ${headlineMetrics(pa.role, pa.view)}. ${pb.name} ${headlineMetrics(pb.role, pb.view)}. (${rangeWords})`;
+  // Phase B.3.3 fix (item 3): headlineMetrics is shared with
+  // personPerformance() above — leaving it unfixed here would mean
+  // comparing two Pre-Sales agents still silently claimed "qualified 0
+  // leads" even after PERSON_PERFORMANCE was corrected. One shared
+  // untimed-count fetch (only when actually needed) covers both sides of
+  // the comparison.
+  const needsUntimed =
+    (pa.role === 'presales_agent' && pa.view.period.qualifiedInRange === 0) ||
+    (pb.role === 'presales_agent' && pb.view.period.qualifiedInRange === 0);
+  const untimedCount = needsUntimed ? await getUntimedQualifiedLeadCount() : 0;
+  const qualificationUnavailable = needsUntimed && untimedCount > 0;
+  const text = `${pa.name} ${headlineMetrics(pa.role, pa.view, untimedCount)}. ${pb.name} ${headlineMetrics(pb.role, pb.view, untimedCount)}. (${rangeWords})`;
   return {
     text,
     facts: { a: { name: pa.name, role: pa.role, ...pa.view }, b: { name: pb.name, role: pb.role, ...pb.view } },
     source: 'verified_crm',
+    dataQuality: qualificationUnavailable ? 'unavailable' : undefined,
+    untimedQualifiedCount: qualificationUnavailable ? untimedCount : undefined,
   };
 }
 
@@ -419,8 +472,25 @@ async function rolePerformance(session: ShifuSession, message: string, range: Da
     const rows = await getPresalesBreakdown(range);
     const totalCalls = rows.reduce((s, r) => s + r.period.callsInRange, 0);
     const totalQualified = rows.reduce((s, r) => s + r.period.qualifiedInRange, 0);
-    const text = `Pre-Sales, ${rangeWords}: ${rows.length} agent${rows.length === 1 ? '' : 's'} made ${totalCalls} calls combined and qualified ${totalQualified} lead${totalQualified === 1 ? '' : 's'}.`;
-    return { text, facts: { role: 'presales_agent', agentCount: rows.length, totalCalls, totalQualified, range: rangeWords }, source: 'verified_crm', subject: { type: 'role', role: 'presales_agent' } };
+    // Phase B.3.3 fix: same principle as presalesAgentBreakdown() — a
+    // combined total of 0 is ambiguous (genuinely nobody qualified vs.
+    // unrecorded due to the known qualified_at gap). Only check when the
+    // total would otherwise read as zero, to skip the extra query in the
+    // common case where a real nonzero figure already answers the
+    // question with full confidence.
+    const untimedCount = totalQualified === 0 ? await getUntimedQualifiedLeadCount() : 0;
+    const qualificationUnavailable = totalQualified === 0 && untimedCount > 0;
+    const text = qualificationUnavailable
+      ? `Pre-Sales, ${rangeWords}: ${rows.length} agent${rows.length === 1 ? '' : 's'} made ${totalCalls} calls combined. Qualification totals are unavailable for this period — ${untimedCount} currently-Qualified lead${untimedCount === 1 ? '' : 's'} in the CRM ${untimedCount === 1 ? 'has' : 'have'} no recorded qualification timestamp (a known historical data gap), so a qualified count of zero can't be presented as verified.`
+      : `Pre-Sales, ${rangeWords}: ${rows.length} agent${rows.length === 1 ? '' : 's'} made ${totalCalls} calls combined and qualified ${totalQualified} lead${totalQualified === 1 ? '' : 's'}.`;
+    return {
+      text,
+      facts: { role: 'presales_agent', agentCount: rows.length, totalCalls, totalQualified: qualificationUnavailable ? null : totalQualified, range: rangeWords },
+      source: 'verified_crm',
+      subject: { type: 'role', role: 'presales_agent' },
+      dataQuality: qualificationUnavailable ? 'unavailable' : undefined,
+      untimedQualifiedCount: qualificationUnavailable ? untimedCount : undefined,
+    };
   }
   if (target === 'sales_counsellor') {
     const rows = await getCounsellorBreakdown(range);
@@ -470,12 +540,18 @@ async function rolePerformance(session: ShifuSession, message: string, range: Da
  * Pure aggregation, extracted so the "totals equal the sum of the agent
  * rows" invariant can be unit-tested directly without a live DB — same
  * pattern as vhAggregatePending above.
+ *
+ * Phase B.3.3 addition: `qualified` on each row may be null (see
+ * PresalesAgentBreakdownRow's doc comment / presalesAgentBreakdown()) —
+ * that means "unknown/unavailable", not zero, so a total cannot honestly
+ * be computed if ANY row is null. Calls are always real numbers (never
+ * affected by the qualified_at gap), so calls always sum normally.
  */
-export function sumBreakdownRows(rows: PresalesAgentBreakdownRow[]): { calls: number; qualified: number } {
-  return {
-    calls: rows.reduce((s, r) => s + r.calls, 0),
-    qualified: rows.reduce((s, r) => s + r.qualified, 0),
-  };
+export function sumBreakdownRows(rows: PresalesAgentBreakdownRow[]): { calls: number; qualified: number | null } {
+  const calls = rows.reduce((s, r) => s + r.calls, 0);
+  const hasUnavailable = rows.some((r) => r.qualified === null);
+  const qualified = hasUnavailable ? null : rows.reduce((s, r) => s + (r.qualified ?? 0), 0);
+  return { calls, qualified };
 }
 
 /**
@@ -488,20 +564,45 @@ export function sumBreakdownRows(rows: PresalesAgentBreakdownRow[]): { calls: nu
 export async function presalesAgentBreakdown(session: ShifuSession, range: DateRange, rangeWords: string): Promise<DeterministicResult> {
   if (!canViewTeamMetrics(session)) return permissionDenied('Per-agent Pre-Sales breakdowns are only available to Admin.');
   const breakdown = await getPresalesBreakdown(range);
-  const rows: PresalesAgentBreakdownRow[] = breakdown.map((r) => ({
-    userId: r.userId,
-    name: r.name,
-    calls: r.period.callsInRange,
-    qualified: r.period.qualifiedInRange,
-  }));
+
+  // Phase B.3.3 fix: a zero here is ambiguous between "this agent
+  // genuinely qualified nobody" and "we can't tell, because some
+  // currently-Qualified leads in the CRM have no qualified_at timestamp
+  // at all" (see getUntimedQualifiedLeadCount()'s doc comment for the
+  // confirmed root cause — migrated historical leads). Only fetch the
+  // untimed count if at least one row would otherwise show a zero, to
+  // avoid the extra query on the common case where every row already has
+  // a real, trustworthy nonzero figure. Calls are NEVER affected by this
+  // gap (calls have always been timestamped via attempt dates), so calls
+  // are always returned as verified regardless.
+  const hasZeroQualifiedRow = breakdown.some((r) => r.period.qualifiedInRange === 0);
+  const untimedCount = hasZeroQualifiedRow ? await getUntimedQualifiedLeadCount() : 0;
+
+  const rows: PresalesAgentBreakdownRow[] = breakdown.map((r) => {
+    const rawQualified = r.period.qualifiedInRange;
+    const qualified = rawQualified === 0 && untimedCount > 0 ? null : rawQualified;
+    return { userId: r.userId, name: r.name, calls: r.period.callsInRange, qualified };
+  });
   const totals = sumBreakdownRows(rows);
+  const qualificationUnavailable = totals.qualified === null && rows.length > 0;
+
   const text = rows.length
     ? [
         `Pre-Sales agent breakdown, ${rangeWords}:`,
-        ...rows.map((r) => `${r.name} — ${r.calls} call${r.calls === 1 ? '' : 's'} | ${r.qualified} qualified`),
-        `Total — ${totals.calls} call${totals.calls === 1 ? '' : 's'} | ${totals.qualified} qualified`,
+        ...rows.map(
+          (r) => `${r.name} — ${r.calls} call${r.calls === 1 ? '' : 's'} | ${r.qualified === null ? 'qualification history unavailable' : `${r.qualified} qualified`}`
+        ),
+        qualificationUnavailable
+          ? `Total — ${totals.calls} call${totals.calls === 1 ? '' : 's'}`
+          : `Total — ${totals.calls} call${totals.calls === 1 ? '' : 's'} | ${totals.qualified} qualified`,
+        ...(qualificationUnavailable
+          ? [
+              `Qualification totals unavailable because ${untimedCount} currently-Qualified lead${untimedCount === 1 ? ' has' : 's have'} no recorded qualified_at timestamp (a known historical data gap).`,
+            ]
+          : []),
       ].join('\n')
     : `No Pre-Sales agent activity recorded for ${rangeWords}.`;
+
   return {
     text,
     facts: { rows, totals, range: rangeWords },
@@ -509,6 +610,8 @@ export async function presalesAgentBreakdown(session: ShifuSession, range: DateR
     subject: { type: 'role', role: 'presales_agent' },
     rows,
     totals,
+    dataQuality: qualificationUnavailable ? 'unavailable' : undefined,
+    untimedQualifiedCount: qualificationUnavailable ? untimedCount : undefined,
   };
 }
 
@@ -517,14 +620,38 @@ export async function presalesAgentBreakdown(session: ShifuSession, range: DateR
  * Admin-only. Uses getLatestQualification(), which sorts by qualified_at
  * DESC across ALL leads with no date filter — this is "the last one,
  * ever", not scoped to today/yesterday/any parsed range. Never infers
- * from the current qualification_status column (a lead's status can
- * change after the fact; qualified_at does not) — see that function's
- * doc comment in context.ts for the full reasoning.
+ * from the current qualification_status column: qualification_status
+ * reflects whatever Final Outcome is set right now, while qualified_at
+ * represents the LATEST recorded qualification transition (corrected Aug
+ * 2026 — this comment previously said qualified_at "does not" change
+ * after the fact, which was wrong; it IS re-stamped on every
+ * requalification, see computeQualifiedAt()'s doc comment in
+ * lib/leadLogic.ts for the confirmed V1 semantic and
+ * getLatestQualification()'s doc comment in context.ts for the full
+ * reasoning). No behavior change here — this correction is documentation
+ * only.
  */
 export async function latestQualificationAnswer(session: ShifuSession): Promise<DeterministicResult> {
   if (!canViewTeamMetrics(session)) return permissionDenied('Qualification-event diagnostics are only available to Admin.');
   const latest = await getLatestQualification();
   if (!latest) {
+    // Aug 2026 diagnostic-pass fix: getLatestQualification() returning
+    // null means "no lead has a recorded qualified_at" — that is NOT the
+    // same fact as "no lead has ever been qualified". Distinguish them by
+    // checking whether any CURRENTLY-Qualified leads exist with no
+    // timestamp at all (see getUntimedQualifiedLeadCount()'s doc comment
+    // for the confirmed root cause: leads migrated from the old
+    // spreadsheet CRM never had this field populated).
+    const untimedCount = await getUntimedQualifiedLeadCount();
+    if (untimedCount > 0) {
+      return {
+        text: `I found no recorded qualification timestamps, so I can't determine when the latest lead was qualified. (${untimedCount} lead${untimedCount === 1 ? ' is' : 's are'} currently marked Qualified with no qualified_at on record — a known historical data gap, not evidence that nothing has been qualified.)`,
+        facts: { untimedQualifiedCount: untimedCount },
+        source: 'unsupported',
+        dataQuality: 'unavailable',
+        untimedQualifiedCount: untimedCount,
+      };
+    }
     return { text: 'No lead has been qualified yet.', facts: null, source: 'verified_crm' };
   }
   const ownerPart = latest.ownerName ? ` by ${latest.ownerName}` : latest.ownerUserId ? ` by user #${latest.ownerUserId}` : '';
@@ -558,19 +685,48 @@ export async function dailyQualificationCountAnswer(session: ShifuSession, range
   if (!canViewTeamMetrics(session)) return permissionDenied('Qualification-event diagnostics are only available to Admin.');
   const rows = await getDailyQualificationBreakdown(range);
   const totalQualified = rows.reduce((s, r) => s + r.qualifiedCount, 0);
+
+  if (totalQualified === 0) {
+    // Aug 2026 diagnostic-pass fix: a zero-row result here is ambiguous
+    // between "genuinely nobody qualified anything in this range" and
+    // "we can't know, because some currently-Qualified leads have no
+    // qualified_at at all" — the query simply can't find rows to count
+    // in the second case either, so it looks identical to a real zero.
+    // Only trust the zero once no untimed-Qualified leads remain anywhere
+    // in the system (that's exactly what flips this back to a normal,
+    // verified "No leads were qualified" answer with no code change
+    // needed later — see getUntimedQualifiedLeadCount()'s doc comment).
+    const untimedCount = await getUntimedQualifiedLeadCount();
+    if (untimedCount > 0) {
+      return {
+        text: `I can't confirm how many leads were qualified ${rangeWords} — ${untimedCount} currently-Qualified lead${untimedCount === 1 ? '' : 's'} in the CRM ${untimedCount === 1 ? 'has' : 'have'} no qualified_at timestamp on record (a known historical data gap), so a result of zero here can't be presented as a verified count. This will resolve once that data gap is addressed.`,
+        facts: { untimedQualifiedCount: untimedCount, range: rangeWords },
+        source: 'unsupported',
+        dataQuality: 'unavailable',
+        untimedQualifiedCount: untimedCount,
+      };
+    }
+    return {
+      text: `No leads were qualified ${rangeWords}.`,
+      facts: { rows: [], totalQualified: 0, range: rangeWords },
+      source: 'verified_crm',
+      subject: { type: 'role', role: 'presales_agent' },
+      rows: [],
+      totalQualified: 0,
+    };
+  }
+
   // Phase B.3.1 (item 2): grouped by CURRENT owner_user_id, disclosed as
   // such rather than presented as a locked-in historical record — see
   // getDailyQualificationBreakdown()'s doc comment in context.ts for the
   // verified reasoning (Admin/Data Team can reassign a lead's owner at
   // any time; no historical "who qualified it" field exists to use
   // instead).
-  const text = rows.length
-    ? [
-        `${totalQualified} lead${totalQualified === 1 ? '' : 's'} qualified, ${rangeWords}, by current Pre-Sales owner:`,
-        ...rows.map((r) => `${r.ownerName ?? 'Unassigned'} — ${r.qualifiedCount} qualified`),
-        `(Note: grouped by each lead's current owner, which can be reassigned by Admin/Data Team after qualification — not a guaranteed record of who performed the qualification.)`,
-      ].join('\n')
-    : `No leads were qualified ${rangeWords}.`;
+  const text = [
+    `${totalQualified} lead${totalQualified === 1 ? '' : 's'} qualified, ${rangeWords}, by current Pre-Sales owner:`,
+    ...rows.map((r) => `${r.ownerName ?? 'Unassigned'} — ${r.qualifiedCount} qualified`),
+    `(Note: grouped by each lead's current owner, which can be reassigned by Admin/Data Team after qualification — not a guaranteed record of who performed the qualification.)`,
+  ].join('\n');
   return {
     text,
     facts: { rows, totalQualified, range: rangeWords },

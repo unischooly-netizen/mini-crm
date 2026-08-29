@@ -17,6 +17,42 @@ export function computeQualificationStatus(finalOutcome: string | null | undefin
   return FINAL_OUTCOME_TO_QUALIFICATION[finalOutcome] || 'Not Reviewed';
 }
 
+/**
+ * Extracted from app/api/leads/[id]/route.ts's PATCH handler (Aug 2026
+ * qualified_at diagnostic pass) so this specific piece of logic is
+ * independently unit-testable — the ternary itself is unchanged, byte for
+ * byte, from what already shipped; this is a pure extraction, not a
+ * behavior change.
+ *
+ * V1 SEMANTIC (confirmed correct on inspection, kept as-is): qualified_at
+ * is stamped with the current server time every time a lead TRANSITIONS
+ * from a non-Qualified qualification_status into 'Qualified' — including
+ * on a requalification after being reverted (e.g. Qualified -> Not
+ * Qualified -> Qualified again re-stamps to the second event's time, not
+ * the first). It is left untouched on any save that doesn't cross that
+ * boundary — either because the lead was already Qualified before this
+ * save (an unrelated field edit, or a Final Outcome edit that still maps
+ * to Qualified), or because it isn't becoming Qualified at all.
+ *
+ * This is the right choice for "when was this lead (last) qualified"-
+ * style questions specifically because it reflects the most recent
+ * qualification event, not a stale first-ever one — matches
+ * computeLifecycle()'s existing Revoked/Active-Qualified handling just
+ * below, which already treats Qualified -> Not Qualified -> Qualified as
+ * a real, designed-for cycle (a "Revoked" lead returning to "Active
+ * Qualified"). Always pass a SERVER-generated `nowIso` (e.g.
+ * `new Date().toISOString()`), never a client-supplied timestamp — the
+ * caller in app/api/leads/[id]/route.ts already does this correctly.
+ */
+export function computeQualifiedAt(
+  wasQualified: boolean,
+  newQualificationStatus: string,
+  nowIso: string,
+  existingQualifiedAt: string | null
+): string | null {
+  return !wasQualified && newQualificationStatus === 'Qualified' ? nowIso : existingQualifiedAt;
+}
+
 export function computePipelineStatus(totalAttempts: number, qualificationStatus: string): string {
   if (totalAttempts === 0) return 'New';
   if (qualificationStatus === 'Not Reviewed') return 'Not Picked';
