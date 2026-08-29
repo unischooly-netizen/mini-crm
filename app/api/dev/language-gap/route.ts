@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest) {
   }
 
   const rows = (await sql.query(
-    `SELECT l.lead_code AS "leadCode", l.name, l.mobile, l.source,
+    `SELECT l.id, l.lead_code AS "leadCode", l.name, l.mobile, l.source,
             l.assigned_date AS "assignedDate", l.qualification_status AS "qualificationStatus",
             l.owner_user_id AS "ownerUserId", u.name AS "ownerName"
      FROM leads l
@@ -43,6 +43,7 @@ export async function GET(_request: NextRequest) {
        AND (l.language IS NULL OR TRIM(l.language) = '')
      ORDER BY l.assigned_date ASC, l.lead_code ASC`
   )) as {
+    id: number;
     leadCode: string;
     name: string;
     mobile: string;
