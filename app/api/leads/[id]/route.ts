@@ -48,6 +48,7 @@ const SELECT_LEAD_COLUMNS = `
       l.next_trial_date AS "nextTrialDate", l.next_trial_time AS "nextTrialTime",
       l.admission_status AS "admissionStatus", l.admission_timestamp AS "admissionTimestamp",
       l.qualified_at AS "qualifiedAt", l.vh_assigned_at AS "vhAssignedAt", l.counsellor_assigned_at AS "counsellorAssignedAt",
+      l.meeting_booked_at AS "meetingBookedAt", l.trial_booked_at AS "trialBookedAt",
       l.lifecycle_status AS "lifecycleStatus", l.revoked_timestamp AS "revokedTimestamp", l.revoked_reason AS "revokedReason",
       l.reminder_call1_status AS "reminderCall1Status", l.reminder_call1_date AS "reminderCall1Date", l.reminder_call1_time AS "reminderCall1Time",
       l.reminder_call2_status AS "reminderCall2Status", l.reminder_call2_date AS "reminderCall2Date", l.reminder_call2_time AS "reminderCall2Time",
@@ -319,6 +320,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     meetingAttemptCount += 1;
   }
 
+  // Meeting Booked At — a genuine event timestamp, distinct from Meeting
+  // Date/Time (which is WHEN the meeting is scheduled to happen, and gets
+  // overwritten on reschedule). Re-stamped every time the effective Meeting
+  // Date actually changes value (first booking or a reschedule both count
+  // as "a booking action happened right now") — powers the Hourly Report's
+  // exact "Meetings Booked this hour" figure. Never touched by anything
+  // else, and never populated retroactively.
+  const meetingBookedAt =
+    meetingDate !== ((existing.meetingDate as string | null) || null) ? nowUtc.toISOString() : (existing.meetingBookedAt as string | null);
+
   // ---- Trial (mirrors Meeting's automation pattern) ----
   const trialStatusRaw = body.trialStatus !== undefined ? (body.trialStatus as string | null) : undefined;
   const trialStatusChanged = trialStatusRaw !== undefined && trialStatusRaw !== existing.trialStatus;
@@ -349,6 +360,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (trialStatusChanged && isTrialConcludingStatus(trialStatusRaw)) {
     trialAttemptCount += 1;
   }
+
+  // Trial Booked At — mirrors Meeting Booked At above, same reasoning.
+  const trialBookedAt =
+    trialDate !== ((existing.trialDate as string | null) || null) ? nowUtc.toISOString() : (existing.trialBookedAt as string | null);
 
   // ---- Admission ----
   const admissionStatusRaw = body.admissionStatus !== undefined ? (body.admissionStatus as string | null) : undefined;
@@ -463,9 +478,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     ['handover_status', handoverStatus], ['assigned_vh_user_id', assignedVhUserId], ['assigned_counsellor_user_id', assignedCounsellorUserId],
     ['counsellor_update', counsellorUpdate], ['owner_user_id', newOwnerUserId], ['status', pipelineStatus],
     ['connecting_status', finalConnectingStatus], ['meeting_status', meetingStatus], ['meeting_attempt_count', meetingAttemptCount],
-    ['next_meeting_date', nextMeetingDate], ['next_meeting_time', nextMeetingTime],
+    ['next_meeting_date', nextMeetingDate], ['next_meeting_time', nextMeetingTime], ['meeting_booked_at', meetingBookedAt],
     ['trial_date', trialDate], ['trial_time', trialTime], ['trial_status', finalTrialStatus], ['trial_attempt_count', trialAttemptCount],
-    ['next_trial_date', nextTrialDate], ['next_trial_time', nextTrialTime],
+    ['next_trial_date', nextTrialDate], ['next_trial_time', nextTrialTime], ['trial_booked_at', trialBookedAt],
     ['admission_status', admissionStatus], ['admission_timestamp', admissionTimestamp],
     ['qualified_at', qualifiedAt], ['vh_assigned_at', vhAssignedAt], ['counsellor_assigned_at', counsellorAssignedAt],
     ['lifecycle_status', lifecycle.lifecycleStatus], ['revoked_timestamp', lifecycle.revokedTimestamp], ['revoked_reason', lifecycle.revokedReason],

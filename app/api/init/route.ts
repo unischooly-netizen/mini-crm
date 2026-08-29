@@ -144,6 +144,19 @@ export async function GET(request: NextRequest) {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS vh_assigned_at TIMESTAMPTZ`;
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS counsellor_assigned_at TIMESTAMPTZ`;
 
+  // --- Stage 5 (Sep 2026): booking-action timestamps, for the Hourly Report
+  // dashboard. Distinct from meeting_date/trial_date (which store WHEN the
+  // meeting/trial is scheduled to happen) — these record the moment someone
+  // actually performed the booking action, so "how many meetings were
+  // booked between 2-3pm" can be answered exactly going forward. Re-stamped
+  // every time the effective meeting_date/trial_date value changes
+  // (including reschedules, which count as a new booking action). Nullable
+  // and never backfilled — leads booked before this column existed simply
+  // have no data here, same rule as every other first-transition timestamp
+  // in this schema.
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS meeting_booked_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS trial_booked_at TIMESTAMPTZ`;
+
   // Widen the status check constraint to the new pipeline status values.
   await sql`ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check`;
   await sql`ALTER TABLE leads ADD CONSTRAINT leads_status_check CHECK (status IN ('New','Not Picked','Follow-up Needed','Qualified','Not Qualified'))`;

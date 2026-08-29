@@ -69,6 +69,7 @@ export const CHART_COLORS = ['#1a56c4', '#0a7a2f', '#b3261e', '#a15c00', '#7a4fd
 export const DASHBOARD_LINKS: { href: string; label: string }[] = [
   { href: '/dashboards/call-log', label: 'Call Log' },
   { href: '/dashboards/today-followup', label: "Today's Follow-up" },
+  { href: '/dashboards/hourly-report', label: 'Hourly Report' },
   { href: '/dashboards/team-performance', label: 'Team Performance' },
   { href: '/dashboards/qualified-dashboard', label: 'Qualified Dashboard' },
   { href: '/dashboards/operations', label: 'Operations Dashboard' },
