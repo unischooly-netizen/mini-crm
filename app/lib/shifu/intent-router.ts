@@ -1,4 +1,12 @@
-// app/lib/shifu/intent-router.ts — Phase A.1 correctness pass.
+// app/lib/shifu/intent-router.ts — Phase A.1 correctness pass, extended in
+// Phase B (see the three additions marked "Phase B" below: LEADERBOARD
+// intent + WHO_RANKING_RE, a broadened MY_NEXT_ACTION regex, and an
+// "assign" keyword routed to MY_STATUS). These were added because building
+// the real chat handler surfaced three concrete test phrases from the
+// Phase B brief that the Phase A router did not yet classify correctly —
+// each addition is scoped to the exact gap found, not a general rewrite.
+// The full Phase A test suite was re-run after these changes and still
+// passes; see intent-router.test.ts for the new cases added alongside it.
 //
 // Deterministic, keyword-based intent classification. No Gemini call here.
 // Design note on person-name extraction: this router does NOT have access
@@ -34,6 +42,8 @@ export type Intent =
   | 'TEAM_PERFORMANCE'
   | 'ROLE_PERFORMANCE'
   | 'TEAM_COMPARISON'
+  | 'LEADERBOARD' // Phase B addition — see WHO_RANKING_RE below
+  | 'TEAM_ATTENTION' // Phase B.1 addition — "who needs attention", distinct from MY_ATTENTION_ITEMS's "what needs attention"
   | 'LEAD_LOOKUP'
   | 'PIPELINE_STATUS'
   | 'OPEN_LEAD'
@@ -41,7 +51,7 @@ export type Intent =
   | 'SNOOZE_SHIFU_ALERT'
   | 'WELLNESS';
 
-export type Entities = { personNames?: string[]; leadCode?: string };
+export type Entities = { personNames?: string[]; leadCode?: string; rankingMetric?: 'calls' | 'overdue' };
 export type ClassifiedIntent = { intent: Intent; entities: Entities };
 
 // Lead codes: every example observed across the live app (screenshots,
@@ -51,6 +61,24 @@ export type ClassifiedIntent = { intent: Intent; entities: Entities };
 // unverified rather than assuming. Kept narrow (a real prefix, not a bare
 // number pattern) to avoid false-positives on ordinary numbers in chat.
 const LEAD_CODE_RE = /\bTLS-\d{3,}\b/i;
+
+// Phase B addition — admin ranking questions ("who has made the most
+// calls", "who has the most overdue follow-ups"). Checked early,
+// before the generic "calls?" / "attention|overdue" keyword checks
+// further down, because those would otherwise misclassify these as
+// MY_CALLS / MY_ATTENTION_ITEMS (a self-scoped intent) instead of a
+// cross-team ranking question. Permission-gated to admin downstream in
+// the chat handler, same as TEAM_COMPARISON/ROLE_PERFORMANCE.
+const WHO_RANKING_RE = /\bwho\s+(has|have|'s|is|are)\b[\s\S]*\b(most|least|highest|lowest|top)\b/i;
+
+// Phase B.1 addition (user-flagged item 2): "who needs attention" is a
+// people/team-level question (which employees have the biggest backlog),
+// completely different from "what needs attention" (which specific leads
+// need action) — the Phase A/B router previously folded both into the same
+// MY_ATTENTION_ITEMS intent via a shared "who needs\b" fragment inside the
+// generic attention/overdue regex further down. Split out and checked
+// early, in the same "who ..." cluster as WHO_RANKING_RE.
+const WHO_NEEDS_ATTENTION_RE = /\bwho\s+needs?\s+(attention|help)\b/i;
 
 const ROLE_WORDS = /\b(pre-?sales|sales(?!person)|counsellors?|vertical\s*heads?|admin|everyone|org(anisation)?|company|team)\b/i;
 const CASUAL_HOW_ARE_YOU = /\bhow\s*('?s|are|is)\s*(you|it going|things|everything)\b/i;
@@ -107,33 +135,53 @@ export function classifyIntent(message: string): ClassifiedIntent {
   const leadCodeMatch = trimmed.match(LEAD_CODE_RE);
   if (leadCodeMatch) return { intent: 'LEAD_LOOKUP', entities: { leadCode: leadCodeMatch[0].toUpperCase() } };
 
-  // 3. Role/team performance — checked before person extraction so "how is
+  // 3. Admin ranking questions (Phase B) — checked before role/person
+  // extraction and before the generic keyword bucket, since phrases like
+  // "who has made the most calls" would otherwise hit the plain "calls?"
+  // check below and get misrouted to MY_CALLS (a self-scoped intent).
+  if (WHO_RANKING_RE.test(m)) {
+    const rankingMetric: 'calls' | 'overdue' | undefined = /overdue/.test(m)
+      ? 'overdue'
+      : /calls?\b/.test(m)
+        ? 'calls'
+        : undefined;
+    return { intent: 'LEADERBOARD', entities: { rankingMetric } };
+  }
+
+  // 3b. "Who needs attention?" (Phase B.1) — must be checked before the
+  // generic attention/overdue bucket in step 8, which now only matches
+  // "what needs attention" style phrasing (no leading "who").
+  if (WHO_NEEDS_ATTENTION_RE.test(m)) {
+    return { intent: 'TEAM_ATTENTION', entities: {} };
+  }
+
+  // 4. Role/team performance — checked before person extraction so "how is
   // Pre-Sales doing" / "how is Sales doing" never get treated as a person
   // named "Pre" or "Sales".
   if (ROLE_WORDS.test(m) && /\b(doing|performing|going|status|update|overview)\b/.test(m)) {
     return { intent: 'ROLE_PERFORMANCE', entities: {} };
   }
 
-  // 4. Two-person compare.
+  // 5. Two-person compare.
   const twoNames = extractTwoNames(trimmed);
   if (twoNames) return { intent: 'TEAM_COMPARISON', entities: { personNames: twoNames } };
 
-  // 5. Single named person.
+  // 6. Single named person.
   const oneName = extractOneName(trimmed);
   if (oneName) return { intent: 'PERSON_PERFORMANCE', entities: { personNames: [oneName] } };
 
-  // 6. Wellness / snooze / open-lead — checked before the generic MY_* bucket.
+  // 7. Wellness / snooze / open-lead — checked before the generic MY_* bucket.
   if (/\b(water|drink|stretch|break|tired|stressed|motivate)\b/.test(m)) return { intent: 'WELLNESS', entities: {} };
   if (/\bsnooze|remind me later\b/.test(m)) return { intent: 'SNOOZE_SHIFU_ALERT', entities: {} };
   if (/\bopen (this )?lead\b/.test(m)) return { intent: 'OPEN_LEAD', entities: {} };
 
-  // 7. Generic MY_* — only reached once role/person/lead-code have all
+  // 8. Generic MY_* — only reached once role/person/lead-code have all
   // failed to match, so "how many calls did Rashi do" is safely routed to
-  // PERSON_PERFORMANCE at step 5, not here. "Overdue/attention" is checked
+  // PERSON_PERFORMANCE at step 6, not here. "Overdue/attention" is checked
   // before the plain "follow-up" keyword — real test run caught this:
   // "what follow-ups are overdue" was matching MY_FOLLOWUPS before this
   // fix, never reaching MY_ATTENTION_ITEMS.
-  if (/\battention|overdue|waiting|needs? (attention|help)|who needs\b/.test(m)) return { intent: 'MY_ATTENTION_ITEMS', entities: {} };
+  if (/\battention|overdue|waiting|needs? (attention|help)\b/.test(m)) return { intent: 'MY_ATTENTION_ITEMS', entities: {} };
   if (/\bconnect(ed)?\b/.test(m)) return { intent: 'MY_CONNECTED_CALLS', entities: {} };
   if (/\bcalls?\b/.test(m)) return { intent: 'MY_CALLS', entities: {} };
   if (/\bfollow[\s-]?up/.test(m)) return { intent: 'MY_FOLLOWUPS', entities: {} };
@@ -142,8 +190,20 @@ export function classifyIntent(message: string): ClassifiedIntent {
   if (/\badmissions?\b/.test(m)) return { intent: 'MY_ADMISSIONS', entities: {} };
   if (/\bpipeline|bottleneck|stuck\b/.test(m)) return { intent: 'PIPELINE_STATUS', entities: {} };
   if (/\b(today'?s )?(overview|update|briefing|summary)\b/.test(m)) return { intent: 'TEAM_PERFORMANCE', entities: {} };
-  if (/\b(next|what should i do|focus)\b/.test(m)) return { intent: 'MY_NEXT_ACTION', entities: {} };
-  if (/\bstatus|how am i doing|progress\b/.test(m)) return { intent: 'MY_STATUS', entities: {} };
+  // Phase B: broadened from the Phase A version (just "next|what should i
+  // do|focus") to also catch "what should I handle first", "priority",
+  // "prioriti[sz]e" — the Phase B test list includes "What should I handle
+  // first?" (a Vertical Head phrasing) which the narrower version missed.
+  if (/\b(next|what should i (do|handle|focus on|prioriti[sz]e)|focus|priorit(y|ies)|prioriti[sz]e)\b/.test(m)) {
+    return { intent: 'MY_NEXT_ACTION', entities: {} };
+  }
+  // Phase B: "assign(ed)" routed to MY_STATUS so a Vertical Head asking
+  // "How many did I assign today?" gets a real answer (MY_STATUS's
+  // deterministic formatter for vertical_head includes assignedInRange)
+  // instead of silently falling through to CASUAL_CHAT, which is what
+  // happened with the unmodified Phase A router — no keyword there matched
+  // "assign" at all.
+  if (/\bstatus|how am i doing|progress|assign(ed)?\b/.test(m)) return { intent: 'MY_STATUS', entities: {} };
 
   return { intent: 'CASUAL_CHAT', entities: {} };
 }

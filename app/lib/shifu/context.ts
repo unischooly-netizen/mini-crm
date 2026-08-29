@@ -42,6 +42,26 @@ export function yesterdayRange(): DateRange {
   return { start: d, end: d };
 }
 
+/**
+ * Phase B addition. "This week" = Monday of the current IST week through
+ * today (not through Sunday) — an in-progress week reported through "now",
+ * not a full Mon-Sun window that would imply data for days that haven't
+ * happened yet. Monday is chosen as the week start to match the CRM's
+ * existing Mon-Sat shift week (see SHIFT_DAYS in the live app/api/shifu/
+ * route.ts), not a Sunday-start calendar week.
+ */
+export function thisWeekRange(): DateRange {
+  const now = new Date();
+  now.setUTCHours(now.getUTCHours() + 5, now.getUTCMinutes() + 30); // shift to IST wall clock
+  const istDow = now.getUTCDay(); // 0=Sun .. 6=Sat, in IST wall-clock terms after the shift above
+  const daysSinceMonday = (istDow + 6) % 7; // Mon=0, Tue=1, ... Sun=6
+  const monday = new Date(now);
+  monday.setUTCDate(monday.getUTCDate() - daysSinceMonday);
+  const start = monday.toISOString().slice(0, 10);
+  const end = istToday();
+  return { start, end };
+}
+
 // ---------------------------------------------------------------------------
 // Fast single-user paths — used on every chat message, so these stay as
 // lean per-user SQL rather than fetching the whole leads table. Same field
@@ -290,12 +310,23 @@ export async function resolveUserByName(query: string): Promise<{ id: number; na
  * (owner_user_id / assigned_vh_user_id / assigned_counsellor_user_id), not
  * by name string. This is what actually fixes the "how is Swati doing" bug.
  */
-export async function getPersonMetrics(targetUserId: number, range: DateRange): Promise<{ role: Role; name: string; view: AdminView | null }> {
+// Phase B.1 addition (item 6, performance): an optional pre-fetched lead
+// set. When the caller already needs fetchAllLeadsRich() for more than one
+// person in the same request (e.g. Shifu's TEAM_COMPARISON, which looks up
+// two people), passing it in here avoids a second full-table fetch. Purely
+// additive and backward-compatible — every existing caller that omits this
+// argument gets the exact same behavior as before (fetches internally),
+// so this does not change getPersonMetrics's validated Phase A behavior.
+export async function getPersonMetrics(
+  targetUserId: number,
+  range: DateRange,
+  preloadedLeads?: PerfLead[]
+): Promise<{ role: Role; name: string; view: AdminView | null }> {
   const userRows = (await sql.query(`SELECT id, name, role FROM users WHERE id = $1`, [targetUserId])) as { id: number; name: string; role: Role }[];
   const user = userRows[0];
   if (!user) return { role: 'presales_agent', name: 'Unknown', view: null };
 
-  const leads = await fetchAllLeadsRich();
+  const leads = preloadedLeads ?? (await fetchAllLeadsRich());
   let scoped: PerfLead[];
   if (user.role === 'presales_agent') scoped = leads.filter((l) => l.ownerUserId === user.id);
   else if (user.role === 'vertical_head') scoped = leads.filter((l) => l.assignedVhUserId === user.id && l.qualificationStatus === 'Qualified');

@@ -15,6 +15,11 @@
 // `entities`. Every case that expects personNames or a leadCode now checks
 // the actual value, not just the intent label. Also added the required new
 // multi-word name case: "How is Neha Sharma doing?".
+//
+// Phase B: added cases for the three router extensions (LEADERBOARD +
+// WHO_RANKING_RE, the broadened MY_NEXT_ACTION regex, and "assign" ->
+// MY_STATUS) plus the exact phrases from the Phase B brief's test list
+// that surfaced each gap.
 
 import { classifyIntent } from './intent-router';
 
@@ -36,7 +41,7 @@ const cases: Case[] = [
   { msg: 'What are my calls today?', expected: 'MY_CALLS' },
   { msg: 'How many connected calls have I done?', expected: 'MY_CONNECTED_CALLS' },
   { msg: 'What follow-ups are overdue?', expected: 'MY_ATTENTION_ITEMS' },
-  { msg: 'Who needs attention?', expected: 'MY_ATTENTION_ITEMS' },
+  { msg: 'Who needs attention?', expected: 'TEAM_ATTENTION' }, // Phase B.1: was MY_ATTENTION_ITEMS pre-split, now correctly TEAM_ATTENTION
   { msg: "Give me today's overview", expected: 'TEAM_PERFORMANCE' },
   { msg: 'TLS-003408', expected: 'LEAD_LOOKUP', expectedLeadCode: 'TLS-003408' },
   { msg: 'tls-000042', expected: 'LEAD_LOOKUP', expectedLeadCode: 'TLS-000042' }, // lowercase input, uppercased output
@@ -48,6 +53,15 @@ const cases: Case[] = [
   { msg: 'How is the team doing?', expected: 'ROLE_PERFORMANCE' },
   { msg: "Rashi's calls today", expected: 'PERSON_PERFORMANCE', expectedNames: ['Rashi'] },
   { msg: 'Hi Shifu', expected: 'CASUAL_CHAT' },
+  // Phase B additions below.
+  { msg: 'Who has made the most calls?', expected: 'LEADERBOARD' },
+  { msg: 'Who has the most overdue follow-ups?', expected: 'LEADERBOARD' },
+  { msg: 'What should I handle first?', expected: 'MY_NEXT_ACTION' },
+  { msg: 'How many did I assign today?', expected: 'MY_STATUS' },
+  { msg: 'How did Neha Sharma do yesterday?', expected: 'PERSON_PERFORMANCE', expectedNames: ['Neha Sharma'] },
+  // Phase B.1 additions below.
+  { msg: 'Who needs help?', expected: 'TEAM_ATTENTION' },
+  { msg: 'What needs attention?', expected: 'MY_ATTENTION_ITEMS' },
 ];
 
 let pass = 0;
