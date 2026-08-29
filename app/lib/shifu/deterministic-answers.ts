@@ -43,8 +43,12 @@ import {
   resolveUserByName,
   getPersonMetrics,
   getAttentionItems,
+  getLatestQualification,
+  getDailyQualificationBreakdown,
   type DateRange,
   type AdminView,
+  type LatestQualification,
+  type QualificationOwnerRow,
 } from './context';
 import { presalesNextAction, vhNextAction, counsellorNextAction, adminNextAction } from './next-action-rules';
 import { getCallsLeaderboard, getOverdueLeaderboard } from './leaderboards';
@@ -64,8 +68,11 @@ export type DeterministicResult = {
   candidates?: { id: number; name: string; role: Role }[];
   // Phase B.2 addition — only populated by presalesAgentBreakdown(), so
   // every other intent's result leaves these undefined.
-  rows?: PresalesAgentBreakdownRow[];
+  rows?: PresalesAgentBreakdownRow[] | QualificationOwnerRow[];
   totals?: { calls: number; qualified: number };
+  // Phase B.3 additions — only populated by their respective functions.
+  latestQualification?: LatestQualification;
+  totalQualified?: number;
 };
 
 export function resolveRange(label: RangeLabel, explicitDate?: string): DateRange {
@@ -505,6 +512,75 @@ export async function presalesAgentBreakdown(session: ShifuSession, range: DateR
   };
 }
 
+/**
+ * Phase B.3 addition — "when was the last lead qualified" diagnostics.
+ * Admin-only. Uses getLatestQualification(), which sorts by qualified_at
+ * DESC across ALL leads with no date filter — this is "the last one,
+ * ever", not scoped to today/yesterday/any parsed range. Never infers
+ * from the current qualification_status column (a lead's status can
+ * change after the fact; qualified_at does not) — see that function's
+ * doc comment in context.ts for the full reasoning.
+ */
+export async function latestQualificationAnswer(session: ShifuSession): Promise<DeterministicResult> {
+  if (!canViewTeamMetrics(session)) return permissionDenied('Qualification-event diagnostics are only available to Admin.');
+  const latest = await getLatestQualification();
+  if (!latest) {
+    return { text: 'No lead has been qualified yet.', facts: null, source: 'verified_crm' };
+  }
+  const ownerPart = latest.ownerName ? ` by ${latest.ownerName}` : latest.ownerUserId ? ` by user #${latest.ownerUserId}` : '';
+  // Phase B.3.1 (item 2): disclosed rather than presented as settled fact
+  // — see getLatestQualification()'s doc comment in context.ts for the
+  // verified reasoning (owner_user_id can be reassigned by Admin/Data
+  // Team after qualification; no historical qualifier field exists).
+  const ownerCaveat = ownerPart ? ' (Note: owner reflects current Pre-Sales ownership, which can be reassigned after qualification — not necessarily who owned it at the time.)' : '';
+  const text = `The last lead qualified was ${latest.leadCode}${ownerPart}, at ${latest.qualifiedAt}. Its current qualification status is ${latest.qualificationStatus}.${ownerCaveat}`;
+  return {
+    text,
+    facts: { ...latest },
+    source: 'verified_crm',
+    leadCode: latest.leadCode,
+    latestQualification: latest,
+  };
+}
+
+/**
+ * Phase B.3 addition — "how many leads were qualified on <date>" /
+ * "who qualified leads on <date>". One deterministic query
+ * (getDailyQualificationBreakdown) answers both phrasings: it's already
+ * grouped by owner, so the total is just the sum of the rows, and the
+ * per-owner rows themselves answer the "who" framing directly. Works
+ * with any resolved range (explicit date, today, yesterday, this week),
+ * not just explicit dates — it's purely period-based (qualified_at
+ * filtered by the range), so there's no snapshot/period mismatch to
+ * guard against here, same reasoning as presalesAgentBreakdown().
+ */
+export async function dailyQualificationCountAnswer(session: ShifuSession, range: DateRange, rangeWords: string): Promise<DeterministicResult> {
+  if (!canViewTeamMetrics(session)) return permissionDenied('Qualification-event diagnostics are only available to Admin.');
+  const rows = await getDailyQualificationBreakdown(range);
+  const totalQualified = rows.reduce((s, r) => s + r.qualifiedCount, 0);
+  // Phase B.3.1 (item 2): grouped by CURRENT owner_user_id, disclosed as
+  // such rather than presented as a locked-in historical record — see
+  // getDailyQualificationBreakdown()'s doc comment in context.ts for the
+  // verified reasoning (Admin/Data Team can reassign a lead's owner at
+  // any time; no historical "who qualified it" field exists to use
+  // instead).
+  const text = rows.length
+    ? [
+        `${totalQualified} lead${totalQualified === 1 ? '' : 's'} qualified, ${rangeWords}, by current Pre-Sales owner:`,
+        ...rows.map((r) => `${r.ownerName ?? 'Unassigned'} — ${r.qualifiedCount} qualified`),
+        `(Note: grouped by each lead's current owner, which can be reassigned by Admin/Data Team after qualification — not a guaranteed record of who performed the qualification.)`,
+      ].join('\n')
+    : `No leads were qualified ${rangeWords}.`;
+  return {
+    text,
+    facts: { rows, totalQualified, range: rangeWords },
+    source: 'verified_crm',
+    subject: { type: 'role', role: 'presales_agent' },
+    rows,
+    totalQualified,
+  };
+}
+
 async function teamPerformance(session: ShifuSession, range: DateRange, rangeWords: string): Promise<DeterministicResult> {
   if (!canViewTeamMetrics(session)) return permissionDenied('A team/org overview is only available to Admin.');
   const view = await getOrgSummary(range);
@@ -651,6 +727,10 @@ export async function buildDeterministicAnswer(
       return teamAttention(session, rangeLabel);
     case 'PRESALES_AGENT_BREAKDOWN':
       return presalesAgentBreakdown(session, range, rangeWords);
+    case 'LATEST_QUALIFICATION':
+      return latestQualificationAnswer(session);
+    case 'DAILY_QUALIFICATION_COUNT':
+      return dailyQualificationCountAnswer(session, range, rangeWords);
     case 'PIPELINE_STATUS':
       return pipelineStatus(session, range, rangeLabel);
     case 'LEADERBOARD':

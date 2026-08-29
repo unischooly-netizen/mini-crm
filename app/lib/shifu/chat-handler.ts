@@ -61,12 +61,40 @@ export type ShifuChatResponse = {
   // Phase B.2 addition — only populated for PRESALES_AGENT_BREAKDOWN.
   rows?: DeterministicResult['rows'];
   totals?: DeterministicResult['totals'];
+  // Phase B.3 additions — only populated for LATEST_QUALIFICATION /
+  // DAILY_QUALIFICATION_COUNT respectively.
+  latestQualification?: DeterministicResult['latestQualification'];
+  totalQualified?: DeterministicResult['totalQualified'];
 };
 
 const CASUAL_FALLBACKS: Record<'CASUAL_CHAT' | 'WELLNESS', string> = {
   CASUAL_CHAT: "Hey! I'm here if you need anything.",
   WELLNESS: "That sounds like a good idea — take a short break.",
 };
+
+/**
+ * Phase B.3.1 fix (user-flagged item 1). Most verified_crm answers are
+ * genuinely scoped to the parsed range, so reporting `rangeWords` back in
+ * the response is correct. LATEST_QUALIFICATION is different: it's an
+ * intentional ALL-HISTORY lookup (getLatestQualification() has no date
+ * filter at all — see its doc comment in context.ts), so if a user asks
+ * "When was the last lead qualified?" with no date mentioned,
+ * parseDateRequest() still resolves a default rangeLabel of 'today' (that
+ * default is correct and unchanged for every OTHER intent), and reporting
+ * `range: "today"` on this particular answer would be actively
+ * misleading — the answer might be describing something that happened
+ * three weeks ago. This function is the single place that decides what
+ * `range` gets reported, so future all-time (non-range-scoped) intents
+ * have one obvious spot to add themselves, rather than each one needing
+ * its own ad hoc fix in the return statement below. Exported and unit-
+ * tested directly (see phase-b3-1-units.test.ts) — the test proves the
+ * override wins even when `rangeWords` is literally 'today', so this
+ * can't regress by someone changing the range-parsing default later.
+ */
+export function resolveResponseRangeLabel(intent: string, source: DeterministicResult['source'], rangeWords: string): string | undefined {
+  if (intent === 'LATEST_QUALIFICATION') return 'all_time';
+  return source === 'verified_crm' ? rangeWords : undefined;
+}
 
 export type HistoryEntry = { role: 'user' | 'model'; text: string };
 
@@ -195,11 +223,13 @@ export async function handleShifuChat(
       intent,
       source: result.source,
       subject: result.subject,
-      range: result.source === 'verified_crm' ? rangeWords : undefined,
+      range: resolveResponseRangeLabel(intent, result.source, rangeWords),
       candidates: result.candidates,
       actions: result.leadCode ? [{ label: 'Open Lead', action: `OPEN_LEAD:${result.leadCode}` }] : undefined,
       rows: result.rows,
       totals: result.totals,
+      latestQualification: result.latestQualification,
+      totalQualified: result.totalQualified,
     };
   }
 

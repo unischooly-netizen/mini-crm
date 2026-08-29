@@ -296,6 +296,119 @@ export async function getCounsellorBreakdown(range: DateRange): Promise<NamedBre
   );
 }
 
+export type LatestQualification = {
+  leadId: number;
+  leadCode: string;
+  ownerUserId: number | null;
+  ownerName: string | null;
+  qualifiedAt: string | null;
+  qualificationStatus: string;
+};
+
+/**
+ * Phase B.3 addition — the single most recent qualification EVENT across
+ * all leads, ever, using qualified_at (the authoritative historical
+ * timestamp stamped once when a lead is qualified — see
+ * lib/performanceMetrics.ts's field-definitions header) rather than
+ * inferring anything from the CURRENT qualification_status column. A
+ * lead's status can change after qualification (e.g. corrected later to
+ * Not Qualified), but qualified_at is never rewritten, so it's the only
+ * reliable "when was the last one" signal. Deliberately unfiltered by
+ * date — this answers "when was the last qualification, period", not
+ * "how many were qualified on date X" (see getDailyQualificationBreakdown
+ * below for that). Returns null if no lead has ever been qualified.
+ *
+ * OWNER ATTRIBUTION CAVEAT (Phase B.3.1, verified against real code, not
+ * assumed): ownerUserId/ownerName here come from owner_user_id, which is
+ * NOT a permanent historical record of who qualified the lead — it's
+ * whoever currently owns it. Verified two things directly in this repo:
+ * (1) lib/allocation.ts's allocateUnassignedLeads() only ever sets
+ * owner_user_id on leads where it's currently NULL ("Existing Owner is
+ * permanent... never reassigns an already-owned lead" per that function's
+ * own doc comment) — so the automatic allocation engine never overwrites
+ * an existing owner; but (2) app/api/leads/[id]/route.ts's PATCH handler
+ * puts 'ownerUserId' in the allowed-fields set for BOTH Admin and Data
+ * Team unconditionally (no qualification-status gate at all), so either
+ * role can manually reassign a lead's owner at any time, including long
+ * after it was qualified. No separate "who actually performed the
+ * qualification" field exists anywhere in the schema (grepped for
+ * qualified_by/qualifier — nothing) and Phase B.3.1 was explicitly told
+ * not to invent one. So: treat ownerName/ownerUserId here as "current
+ * best-known Pre-Sales owner", not as verified proof of who did the
+ * qualifying — see the caveat surfaced in deterministic-answers.ts's
+ * latestQualificationAnswer() text for how this is disclosed to the user.
+ */
+export async function getLatestQualification(): Promise<LatestQualification | null> {
+  const rows = (await sql.query(
+    `SELECT l.id AS "leadId", l.lead_code AS "leadCode", l.owner_user_id AS "ownerUserId",
+            u.name AS "ownerName", l.qualified_at AS "qualifiedAt", l.qualification_status AS "qualificationStatus"
+     FROM leads l
+     LEFT JOIN users u ON u.id = l.owner_user_id
+     WHERE l.qualified_at IS NOT NULL
+     ORDER BY l.qualified_at DESC
+     LIMIT 1`
+  )) as { leadId: number; leadCode: string; ownerUserId: number | null; ownerName: string | null; qualifiedAt: string | null; qualificationStatus: string }[];
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    leadId: Number(r.leadId),
+    leadCode: r.leadCode,
+    ownerUserId: r.ownerUserId != null ? Number(r.ownerUserId) : null,
+    ownerName: r.ownerName || null,
+    qualifiedAt: r.qualifiedAt,
+    qualificationStatus: r.qualificationStatus || 'Not Reviewed',
+  };
+}
+
+export type QualificationOwnerRow = { ownerUserId: number | null; ownerName: string | null; qualifiedCount: number };
+
+/**
+ * Phase B.3 addition — how many leads were qualified within a given IST
+ * business date range, grouped by Pre-Sales owner. Same date-scoping
+ * convention as every other period metric in this file: qualified_at
+ * shifted to IST and compared by ::date, exactly matching
+ * getPresalesAgentMetrics's own qualified_in_range clause (same field,
+ * same timezone conversion) — no new date semantics invented here. Used
+ * for both "how many leads were qualified on X" (caller sums the rows)
+ * and "who qualified leads on X" (caller uses the rows directly) — one
+ * query serves both phrasings, since grouped-by-owner counts trivially
+ * sum to the total.
+ *
+ * OWNER ATTRIBUTION CAVEAT (Phase B.3.1): this groups by owner_user_id,
+ * the same field used (and unchanged) in getPresalesBreakdown() since
+ * Phase A — but for a "who qualified" question specifically, it's worth
+ * being explicit that this is CURRENT ownership, not a locked-in
+ * historical record. Verified directly against this repo's code: Admin
+ * and Data Team can reassign a lead's owner_user_id at any time via
+ * PATCH /api/leads/[id] (see app/api/leads/[id]/route.ts's allowedKeys
+ * logic — 'ownerUserId' is unconditionally permitted for both roles, no
+ * qualification-status gate), while the automatic allocation engine in
+ * lib/allocation.ts never touches an already-owned lead. So a lead
+ * qualified by one agent could show a different current owner here if it
+ * was later manually reassigned (e.g. a data correction, or handing a
+ * lead to a colleague). No historical "who qualified it" field exists in
+ * the schema to fall back on, and none is invented here — the caller
+ * (dailyQualificationCountAnswer in deterministic-answers.ts) discloses
+ * this in its response text rather than presenting the grouping as
+ * verified historical fact.
+ */
+export async function getDailyQualificationBreakdown(range: DateRange): Promise<QualificationOwnerRow[]> {
+  const rows = (await sql.query(
+    `SELECT l.owner_user_id AS "ownerUserId", u.name AS "ownerName", COUNT(*)::int AS "qualifiedCount"
+     FROM leads l
+     LEFT JOIN users u ON u.id = l.owner_user_id
+     WHERE (l.qualified_at AT TIME ZONE 'Asia/Kolkata')::date BETWEEN $1 AND $2
+     GROUP BY l.owner_user_id, u.name
+     ORDER BY "qualifiedCount" DESC`,
+    [range.start, range.end]
+  )) as { ownerUserId: number | null; ownerName: string | null; qualifiedCount: number }[];
+  return rows.map((r) => ({
+    ownerUserId: r.ownerUserId != null ? Number(r.ownerUserId) : null,
+    ownerName: r.ownerName || null,
+    qualifiedCount: Number(r.qualifiedCount) || 0,
+  }));
+}
+
 /** Resolve a typed name to user(s) — used for admin PERSON_PERFORMANCE / TEAM_COMPARISON lookups. */
 export async function resolveUserByName(query: string): Promise<{ id: number; name: string; role: Role }[]> {
   const rows = (await sql.query(

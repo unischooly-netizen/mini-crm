@@ -45,6 +45,8 @@ export type Intent =
   | 'LEADERBOARD' // Phase B addition — see WHO_RANKING_RE below
   | 'TEAM_ATTENTION' // Phase B.1 addition — "who needs attention", distinct from MY_ATTENTION_ITEMS's "what needs attention"
   | 'PRESALES_AGENT_BREAKDOWN' // Phase B.2 addition — per-agent Pre-Sales breakdown, distinct from ROLE_PERFORMANCE's combined total
+  | 'LATEST_QUALIFICATION' // Phase B.3 addition — "when was the last lead qualified"
+  | 'DAILY_QUALIFICATION_COUNT' // Phase B.3 addition — "how many/who qualified leads on <date>"
   | 'LEAD_LOOKUP'
   | 'PIPELINE_STATUS'
   | 'OPEN_LEAD'
@@ -95,6 +97,27 @@ const WHO_NEEDS_ATTENTION_RE = /\bwho\s+needs?\s+(attention|help)\b/i;
 // noun doesn't match "performing"), but is placed here for a stronger,
 // more specific signal to win first regardless.
 const PRESALES_AGENT_BREAKDOWN_RE = /\bagents?\b/i;
+
+// Phase B.3 additions — qualification-event diagnostics. "Latest" catches
+// both word orders ("the last lead qualified" and "who qualified the
+// latest lead"), checked strictly before DAILY_QUALIFICATION_COUNT so a
+// message naming both "last/latest" AND a date some day doesn't get
+// mis-routed to the daily-count path. DAILY_QUALIFICATION_COUNT_RE
+// requires the word "qualif..." together with a "how many"/"who" framing
+// — deliberately keyword-only (not date-aware) per this router's existing
+// design principle that intent classification and date-range parsing are
+// independent questions (see range-parser.ts's header comment); the date
+// itself is resolved separately by parseDateRequest() in chat-handler.ts,
+// same as every other intent.
+const LATEST_QUALIFICATION_RE = /\b(last|latest)\b.*\bqualif|\bqualif\w*\b.*\b(last|latest)\b/i;
+const DAILY_QUALIFICATION_COUNT_RE = /\bqualif\w*\b/i;
+const HOW_MANY_OR_WHO_RE = /\b(how many|who)\b/i;
+// Guards DAILY_QUALIFICATION_COUNT from swallowing a first-person question
+// like "how many leads did I qualify today?" — that's a personal question
+// (would belong with MY_STATUS-style intents, not this admin cross-team
+// one), not one of the three example phrasings the brief specifies, all
+// of which are third-person ("were qualified", "who qualified leads").
+const FIRST_PERSON_RE = /\b(i|my|me)\b/i;
 
 const ROLE_WORDS = /\b(pre-?sales|sales(?!person)|counsellors?|vertical\s*heads?|admin|everyone|org(anisation)?|company|team)\b/i;
 const CASUAL_HOW_ARE_YOU = /\bhow\s*('?s|are|is)\s*(you|it going|things|everything)\b/i;
@@ -178,6 +201,22 @@ export function classifyIntent(message: string): ClassifiedIntent {
   // to a combined-total answer or being misread as a person's name.
   if (PRESALES_AGENT_BREAKDOWN_RE.test(m)) {
     return { intent: 'PRESALES_AGENT_BREAKDOWN', entities: {} };
+  }
+
+  // 3d. Latest qualification event (Phase B.3) — "when was the last lead
+  // qualified", "who qualified the latest lead", etc. Checked before the
+  // daily-count check below since both can mention "qualif...".
+  if (LATEST_QUALIFICATION_RE.test(m)) {
+    return { intent: 'LATEST_QUALIFICATION', entities: {} };
+  }
+
+  // 3e. Daily qualification count/breakdown (Phase B.3) — "how many leads
+  // were qualified on 27 August", "who qualified leads on 27 August".
+  // Requires the "how many"/"who" framing so an unrelated sentence that
+  // happens to contain "qualified" (e.g. a future MY_STATUS-style
+  // question) doesn't get swept in here.
+  if (DAILY_QUALIFICATION_COUNT_RE.test(m) && HOW_MANY_OR_WHO_RE.test(m) && !FIRST_PERSON_RE.test(m)) {
+    return { intent: 'DAILY_QUALIFICATION_COUNT', entities: {} };
   }
 
   // 4. Role/team performance — checked before person extraction so "how is
