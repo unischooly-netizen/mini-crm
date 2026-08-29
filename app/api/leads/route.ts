@@ -14,6 +14,7 @@ export async function GET() {
              l.assigned_date AS "assignedDate", l.owner_user_id AS "ownerUserId",
              u.name AS "ownerName", l.status, l.notes,
              l.qualification_status AS "qualificationStatus",
+             l.total_attempts AS "totalAttempts",
              l.next_followup_date AS "nextFollowupDate", l.next_followup_time AS "nextFollowupTime",
              l.handover_status AS "handoverStatus",
              l.created_at AS "createdAt", l.updated_at AS "updatedAt"
@@ -33,6 +34,7 @@ export async function GET() {
     SELECT id, lead_code AS "leadCode", name, mobile, email, source, language,
            assigned_date AS "assignedDate", status, notes,
            qualification_status AS "qualificationStatus",
+           total_attempts AS "totalAttempts",
            next_followup_date AS "nextFollowupDate", next_followup_time AS "nextFollowupTime",
            created_at AS "createdAt", updated_at AS "updatedAt"
     FROM leads

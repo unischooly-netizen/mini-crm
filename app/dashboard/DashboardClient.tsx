@@ -5,7 +5,8 @@ import { ThemeToggle } from '@/app/components/ThemeToggle';
 import MrShifu from '@/app/components/MrShifu';
 import { StatusBadge, followupColor } from '@/app/admin/AdminClient';
 import { DashboardsMenu, usePageSlice, Pager } from '@/app/components/DashboardKit';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatDate } from '@/lib/format';
+import { todayIstDateStr } from '@/lib/followup';
 import Link from 'next/link';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -22,6 +23,7 @@ type Lead = {
   assignedDate: string;
   status: string;
   qualificationStatus?: string;
+  totalAttempts?: number;
   nextFollowupDate?: string | null;
   nextFollowupTime?: string | null;
   notes: string;
@@ -35,6 +37,8 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
+  const [assignedDateFilter, setAssignedDateFilter] = useState('');
+  const [attemptsFilter, setAttemptsFilter] = useState('All');
   const [loadError, setLoadError] = useState('');
 
   const loadLeads = useCallback(async (silent = false) => {
@@ -84,8 +88,19 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
       l.email?.toLowerCase().includes(q)
     );
   };
-  const visibleLeads = (statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter)).filter(bySearch);
-  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${statusFilter}|${search}`);
+  const byAssignedDate = (l: Lead) =>
+    !assignedDateFilter || (l.assignedDate ? l.assignedDate.slice(0, 10) === assignedDateFilter : false);
+  const byAttempts = (l: Lead) => {
+    if (attemptsFilter === 'All') return true;
+    const n = l.totalAttempts || 0;
+    if (attemptsFilter === '4+') return n >= 4;
+    return n === Number(attemptsFilter);
+  };
+  const visibleLeads = (statusFilter === 'All' ? leads : leads.filter((l) => l.status === statusFilter))
+    .filter(bySearch)
+    .filter(byAssignedDate)
+    .filter(byAttempts);
+  const { page, setPage, totalPages, pageItems } = usePageSlice(visibleLeads, `${statusFilter}|${search}|${assignedDateFilter}|${attemptsFilter}`);
 
   const counts = PIPELINE_TABS.reduce<Record<string, number>>((acc, s) => {
     acc[s] = s === 'All' ? leads.length : leads.filter((l) => l.status === s).length;
@@ -118,13 +133,47 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
           </FilterButton>
         ))}
       </div>
-      <input
-        type="text"
-        placeholder="Search by lead code, name, mobile, or email…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ padding: '9px 12px', fontSize: 14, border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)', borderRadius: 8, width: '100%', maxWidth: 320, marginBottom: 16, boxSizing: 'border-box' }}
-      />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+        <input
+          type="text"
+          placeholder="Search by lead code, name, mobile, or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ padding: '9px 12px', fontSize: 14, border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)', borderRadius: 8, width: '100%', maxWidth: 320, boxSizing: 'border-box' }}
+        />
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--fg)' }}>
+          Assigned Date
+          <input
+            type="date"
+            value={assignedDateFilter}
+            onChange={(e) => setAssignedDateFilter(e.target.value)}
+            style={{ padding: '7px 10px', fontSize: 13, border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)', borderRadius: 8 }}
+          />
+        </label>
+        <FilterButton active={assignedDateFilter === todayIstDateStr()} onClick={() => setAssignedDateFilter(assignedDateFilter === todayIstDateStr() ? '' : todayIstDateStr())}>
+          Today
+        </FilterButton>
+        {assignedDateFilter && (
+          <button onClick={() => setAssignedDateFilter('')} style={{ ...secondaryButtonStyle, padding: '6px 12px', fontSize: 13 }}>
+            Clear date
+          </button>
+        )}
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--fg)' }}>
+          Attempts
+          <select
+            value={attemptsFilter}
+            onChange={(e) => setAttemptsFilter(e.target.value)}
+            style={{ padding: '7px 10px', fontSize: 13, border: '1px solid var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)', borderRadius: 8 }}
+          >
+            <option value="All">All</option>
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4+">4+</option>
+          </select>
+        </label>
+      </div>
 
       {loading ? (
         <p>Loading…</p>
@@ -137,8 +186,8 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
           <table>
             <thead>
               <tr>
-                <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Language</th>
-                <th>Status</th><th>Next Follow-up</th><th></th>
+                <th>Lead Code</th><th>Name</th><th>Mobile</th><th>Assigned Date</th><th>Language</th>
+                <th>Attempts</th><th>Status</th><th>Next Follow-up</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -147,7 +196,9 @@ export default function DashboardClient({ agentName }: { agentName: string }) {
                   <td>{lead.leadCode}</td>
                   <td>{lead.name}</td>
                   <td>{lead.mobile}</td>
+                  <td>{formatDate(lead.assignedDate) || '—'}</td>
                   <td>{lead.language}</td>
+                  <td>{lead.totalAttempts ?? 0} / 9</td>
                   <td><StatusBadge status={lead.qualificationStatus || lead.status} /></td>
                   <td style={{ color: followupColor(lead.nextFollowupDate, lead.nextFollowupTime) }}>
                     {formatDateTime(lead.nextFollowupDate, lead.nextFollowupTime) || '—'}
