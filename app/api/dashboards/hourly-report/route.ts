@@ -26,6 +26,26 @@ import { todayIstDateStr, toIstDateTimeParts } from '@/lib/followup';
 // Section G of that report for the one caveat: correcting an attempt's
 // status after the fact silently re-stamps its date/time too).
 
+// Same helper every other dashboard route (ceo, team-performance,
+// operations, call-log) already defines: Postgres DATE columns come back
+// from this driver as native JS Date objects, not strings, so naively
+// doing String(value).slice(0, 10) produces garbage like "Tue Aug 26"
+// instead of "2026-08-26" — which silently fails every date comparison.
+// This was the bug behind Dialed/Connected/Follow-ups showing 0 for every
+// agent and every date: the fix below is what every other dashboard
+// already relies on, this file just hadn't reused it yet.
+function toDateStr(v: unknown): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(v.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof v === 'string') return v.slice(0, 10);
+  return String(v).slice(0, 10);
+}
+
 const MEET_MODES = new Set(['Teams Meet', 'Google Meet']);
 const CALL_MODES = new Set(['Phone Call', 'Whatsapp call']);
 
@@ -106,13 +126,13 @@ export async function GET(request: NextRequest) {
 
       // Follow-ups pending today — a current snapshot (no hour attached;
       // this field has no history at all, see the metric-truth audit).
-      const nextFollowupDate = row.nextFollowupDate ? String(row.nextFollowupDate).slice(0, 10) : null;
+      const nextFollowupDate = toDateStr(row.nextFollowupDate);
       if (nextFollowupDate === today) agg.followupsPendingToday += 1;
 
       // Dialed / Connected, per attempt slot, bucketed by the attempt's own hour.
       for (let n = 1; n <= ATTEMPT_COUNT; n++) {
         const status = row[`a${n}s`] as string | null;
-        const attemptDate = row[`a${n}d`] ? String(row[`a${n}d`]).slice(0, 10) : null;
+        const attemptDate = toDateStr(row[`a${n}d`]);
         const attemptTime = row[`a${n}t`] as string | null;
         if (!status || attemptDate !== date || !attemptTime) continue;
         const hour = String(parseInt(attemptTime.split(':')[0], 10) || 0);
