@@ -31,15 +31,16 @@ type CurrentHourLeaderRow = { userId: number; name: string; hourScore: number; h
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+function hourPointLabel(h: number): string {
+  const hh = h % 24;
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  let v = hh % 12;
+  if (v === 0) v = 12;
+  return `${v} ${ampm}`;
+}
+
 function hourLabel(h: number): string {
-  const to12 = (x: number) => {
-    const hh = x % 24;
-    const ampm = hh >= 12 ? 'PM' : 'AM';
-    let v = hh % 12;
-    if (v === 0) v = 12;
-    return `${v} ${ampm}`;
-  };
-  return `${to12(h)} – ${to12(h + 1)}`;
+  return `${hourPointLabel(h)} – ${hourPointLabel(h + 1)}`;
 }
 
 export default function HourlyReportClient({ defaultAgent }: { defaultAgent: string }) {
@@ -49,7 +50,7 @@ export default function HourlyReportClient({ defaultAgent }: { defaultAgent: str
   const [date, setDate] = useState(today);
   const [agent, setAgent] = useState(defaultAgent);
   const [fromHour, setFromHour] = useState(9);
-  const [toHour, setToHour] = useState(20);
+  const [toHour, setToHour] = useState(21);
 
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderRow[]>([]);
@@ -92,7 +93,7 @@ export default function HourlyReportClient({ defaultAgent }: { defaultAgent: str
 
   const hours = useMemo(() => {
     const out: number[] = [];
-    for (let h = fromHour; h <= toHour; h++) out.push(h);
+    for (let h = fromHour; h <= toHour - 1; h++) out.push(h);
     return out;
   }, [fromHour, toHour]);
 
@@ -139,22 +140,22 @@ export default function HourlyReportClient({ defaultAgent }: { defaultAgent: str
             ))}
           </select>
         </FilterField>
-        <FilterField label="From Hour">
+        <FilterField label="From">
           <select value={fromHour} onChange={(e) => setFromHour(Number(e.target.value))} style={selectStyle}>
             {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-              <option key={h} value={h}>{hourLabel(h)}</option>
+              <option key={h} value={h}>{hourPointLabel(h)}</option>
             ))}
           </select>
         </FilterField>
-        <FilterField label="To Hour">
+        <FilterField label="To">
           <select value={toHour} onChange={(e) => setToHour(Number(e.target.value))} style={selectStyle}>
-            {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-              <option key={h} value={h}>{hourLabel(h)}</option>
+            {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
+              <option key={h} value={h}>{hourPointLabel(h)}</option>
             ))}
           </select>
         </FilterField>
         <button
-          onClick={() => { setDate(today); setFromHour(9); setToHour(20); }}
+          onClick={() => { setDate(today); setFromHour(9); setToHour(21); }}
           style={{ ...selectStyle, cursor: 'pointer', fontWeight: 600 }}
         >
           Today, 9 AM–9 PM
@@ -249,6 +250,11 @@ export default function HourlyReportClient({ defaultAgent }: { defaultAgent: str
               )}
             </div>
 
+            {hours.length === 0 && (
+              <p style={{ color: '#a15c00', fontSize: 13 }}>
+                Pick a &quot;To&quot; time after your &quot;From&quot; time to see rows here — e.g. From 2 PM, To 4 PM shows the 2–3 PM and 3–4 PM hours.
+              </p>
+            )}
             <div className="table-scroll">
               <table>
                 <thead>

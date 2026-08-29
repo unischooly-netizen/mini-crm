@@ -8,13 +8,19 @@ import { todayIstDateStr, toIstDateTimeParts } from '@/lib/followup';
 // report Pre-Sales agents used to hand a manager (Dialed Call, Connected
 // Calls, Meets Scheduled, Calls Scheduled, Followup), broken down by the
 // hour of day it happened in, for one selected date, across every agent at
-// once. Every number here is computed from the same fields the rest of the
-// app already trusts — nothing new is invented, and the two figures that
-// genuinely have no reliable historical source before this feature shipped
-// (Meets/Calls Scheduled going forward use meeting_booked_at/trial_booked_at
-// — see app/api/init/route.ts's "Stage 5" comment) are simply absent for
-// any hour before that column existed, same rule as every other
-// first-transition timestamp in this schema.
+// once.
+//
+// Deliberately requires ZERO new database columns and ZERO /api/init run —
+// every field below (attempt1-9_status/date/time, qualified_at,
+// preferred_mode, qualification_status, next_followup_date) already
+// existed in production before this feature. An earlier version of this
+// file's sibling (app/api/leads/[id]/route.ts) briefly added two new
+// "booking timestamp" columns for a *future* VH/Counsellor report — that
+// change broke every lead page in production because the columns hadn't
+// been created yet, and this Hourly Report never even used them. It's been
+// reverted; if that future report gets built, its schema change will ship
+// on its own, verified end-to-end, never bundled into this shared file
+// again.
 //
 // "Meets Scheduled" vs "Calls Scheduled": both are Qualified leads, split
 // by the lead's stated Preferred Mode — Teams Meet / Google Meet count as
