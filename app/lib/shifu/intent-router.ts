@@ -44,6 +44,7 @@ export type Intent =
   | 'TEAM_COMPARISON'
   | 'LEADERBOARD' // Phase B addition — see WHO_RANKING_RE below
   | 'TEAM_ATTENTION' // Phase B.1 addition — "who needs attention", distinct from MY_ATTENTION_ITEMS's "what needs attention"
+  | 'PRESALES_AGENT_BREAKDOWN' // Phase B.2 addition — per-agent Pre-Sales breakdown, distinct from ROLE_PERFORMANCE's combined total
   | 'LEAD_LOOKUP'
   | 'PIPELINE_STATUS'
   | 'OPEN_LEAD'
@@ -79,6 +80,21 @@ const WHO_RANKING_RE = /\bwho\s+(has|have|'s|is|are)\b[\s\S]*\b(most|least|highe
 // generic attention/overdue regex further down. Split out and checked
 // early, in the same "who ..." cluster as WHO_RANKING_RE.
 const WHO_NEEDS_ATTENTION_RE = /\bwho\s+needs?\s+(attention|help)\b/i;
+
+// Phase B.2 addition — a per-agent Pre-Sales breakdown request ("which
+// Pre-Sales agent did how many calls", "Pre-Sales agent performance",
+// "calls by Pre-Sales agent"), distinct from ROLE_PERFORMANCE's combined
+// role-level total. The single word "agent"/"agents" is a safe, specific
+// signal in this app's vocabulary — no other role in this CRM is ever
+// called an "agent" (Vertical Head, Sales Counsellor, Admin, Data Team),
+// so this doesn't need to also require the words "pre-sales" or "each" to
+// be unambiguous. Checked early (before ROLE_PERFORMANCE) since a phrase
+// like "Show Pre-Sales agent performance" doesn't happen to match
+// ROLE_PERFORMANCE's own regex anyway (it requires
+// doing/performing/going/status/update/overview, and "performance" the
+// noun doesn't match "performing"), but is placed here for a stronger,
+// more specific signal to win first regardless.
+const PRESALES_AGENT_BREAKDOWN_RE = /\bagents?\b/i;
 
 const ROLE_WORDS = /\b(pre-?sales|sales(?!person)|counsellors?|vertical\s*heads?|admin|everyone|org(anisation)?|company|team)\b/i;
 const CASUAL_HOW_ARE_YOU = /\bhow\s*('?s|are|is)\s*(you|it going|things|everything)\b/i;
@@ -153,6 +169,15 @@ export function classifyIntent(message: string): ClassifiedIntent {
   // "what needs attention" style phrasing (no leading "who").
   if (WHO_NEEDS_ATTENTION_RE.test(m)) {
     return { intent: 'TEAM_ATTENTION', entities: {} };
+  }
+
+  // 3c. Per-agent Pre-Sales breakdown (Phase B.2) — checked before
+  // ROLE_PERFORMANCE/person-extraction so "which Pre-Sales agent did how
+  // many calls", "Pre-Sales agent performance on 27 August", and "calls by
+  // Pre-Sales agent for 27 Aug" all route here instead of falling through
+  // to a combined-total answer or being misread as a person's name.
+  if (PRESALES_AGENT_BREAKDOWN_RE.test(m)) {
+    return { intent: 'PRESALES_AGENT_BREAKDOWN', entities: {} };
   }
 
   // 4. Role/team performance — checked before person extraction so "how is

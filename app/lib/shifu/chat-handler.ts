@@ -24,7 +24,7 @@
 // capped and filtered, not trusted blindly.
 
 import { classifyIntent } from './intent-router';
-import { parseRangeLabel } from './range-parser';
+import { parseDateRequest, rangeLabelToWords } from './range-parser';
 import { buildDeterministicAnswer, type DeterministicResult } from './deterministic-answers';
 import { buildRoleBlock } from './prompts';
 import { callGemini } from './gemini-client';
@@ -58,6 +58,9 @@ export type ShifuChatResponse = {
   range?: string;
   actions?: { label: string; action: string }[];
   candidates?: { id: number; name: string; role: string }[];
+  // Phase B.2 addition — only populated for PRESALES_AGENT_BREAKDOWN.
+  rows?: DeterministicResult['rows'];
+  totals?: DeterministicResult['totals'];
 };
 
 const CASUAL_FALLBACKS: Record<'CASUAL_CHAT' | 'WELLNESS', string> = {
@@ -126,9 +129,27 @@ export async function handleShifuChat(
   const { intent, entities } = classifyIntent(trimmed);
   timing.mark('intent');
 
-  const rangeLabel = parseRangeLabel(trimmed);
-  const rangeWords = rangeLabel === 'yesterday' ? 'yesterday' : rangeLabel === 'this_week' ? 'this week' : 'today';
+  const { label: rangeLabel, explicitDate } = parseDateRequest(trimmed);
+  const rangeWords = rangeLabelToWords(rangeLabel, explicitDate);
   timing.mark('range');
+
+  // Phase B.2 (item 1): a clearly-attempted-but-unparseable date must
+  // never silently fall through to 'today'. This is checked here, after
+  // CASUAL_CHAT/WELLNESS have their own early return below (those never
+  // use rangeLabel at all, so a coincidental false-positive there would
+  // otherwise block ordinary conversation for no reason) but before every
+  // CRM-answering intent, so the guard applies uniformly regardless of
+  // which intent was classified — not just the new per-agent breakdown.
+  const isCasualIntent = intent === 'CASUAL_CHAT' || intent === 'WELLNESS';
+  if (!isCasualIntent && rangeLabel === 'unrecognized_date') {
+    timing.mark('gemini_skipped');
+    timing.flush(intent);
+    return {
+      message: "I couldn't match that to a real calendar date — try a format like '27 Aug', 'August 27th', or '27/08/2026'.",
+      intent,
+      source: 'unsupported',
+    };
+  }
 
   // CASUAL_CHAT / WELLNESS never touch the CRM, per brief sections 14/15,
   // and are the ONLY path where Gemini is ever called, per the Phase B.1
@@ -156,7 +177,7 @@ export async function handleShifuChat(
   }
 
   // Every other intent goes through the verified-facts pipeline.
-  const result = await buildDeterministicAnswer(session, intent, entities, rangeLabel, trimmed);
+  const result = await buildDeterministicAnswer(session, intent, entities, rangeLabel, trimmed, explicitDate);
   timing.mark('context');
 
   // Phase B.1: shouldCallGeminiForRewrite(result.source) is always false
@@ -177,6 +198,8 @@ export async function handleShifuChat(
       range: result.source === 'verified_crm' ? rangeWords : undefined,
       candidates: result.candidates,
       actions: result.leadCode ? [{ label: 'Open Lead', action: `OPEN_LEAD:${result.leadCode}` }] : undefined,
+      rows: result.rows,
+      totals: result.totals,
     };
   }
 

@@ -53,6 +53,8 @@ import { fetchAllLeadsRich } from '@/lib/performanceMetrics';
 
 export type DeterministicSource = 'verified_crm' | 'permission_denied' | 'not_found' | 'ambiguous' | 'unsupported' | 'no_gemini_needed';
 
+export type PresalesAgentBreakdownRow = { userId: number | null; name: string; calls: number; qualified: number };
+
 export type DeterministicResult = {
   text: string;
   facts: Record<string, unknown> | null;
@@ -60,11 +62,20 @@ export type DeterministicResult = {
   subject?: { type: 'self' | 'user' | 'role' | 'org'; id?: number; name?: string; role?: string };
   leadCode?: string;
   candidates?: { id: number; name: string; role: Role }[];
+  // Phase B.2 addition — only populated by presalesAgentBreakdown(), so
+  // every other intent's result leaves these undefined.
+  rows?: PresalesAgentBreakdownRow[];
+  totals?: { calls: number; qualified: number };
 };
 
-export function resolveRange(label: RangeLabel): DateRange {
+export function resolveRange(label: RangeLabel, explicitDate?: string): DateRange {
   if (label === 'yesterday') return yesterdayRange();
   if (label === 'this_week') return thisWeekRange();
+  // Phase B.2: an explicit calendar date is its own single-day range.
+  // Falls through to todayRange() if explicitDate is somehow missing —
+  // should never happen in practice since chat-handler only sets
+  // rangeLabel to 'explicit_date' when it also has a resolved date string.
+  if (label === 'explicit_date' && explicitDate) return { start: explicitDate, end: explicitDate };
   return todayRange();
 }
 
@@ -432,6 +443,68 @@ async function rolePerformance(session: ShifuSession, message: string, range: Da
   return { text, facts: { period: view.period, currentQualified: view.snapshot.currentQualified, range: rangeWords }, source: 'verified_crm', subject: { type: 'org' } };
 }
 
+/**
+ * Phase B.2 addition — admin-only per-agent Pre-Sales breakdown, built for
+ * explicit-date questions like "On 27th August, which Pre-Sales agent did
+ * how many calls and how many leads did each qualify?" but works for any
+ * resolved range (today/yesterday/this week/explicit date) since it's
+ * purely period-based — getPresalesBreakdown(range) already filters every
+ * agent's calls/qualifications to the given date range, so there's no
+ * snapshot-vs-period mismatch to guard against here (unlike ROLE_PERFORMANCE's
+ * VH branch, which is snapshot-only).
+ *
+ * Reuses getPresalesBreakdown(range) as-is — no new metric logic is
+ * computed here, this function only formats rows that function already
+ * returns (period.callsInRange / period.qualifiedInRange), per the
+ * standing "reuse, don't duplicate" rule. Rows are already sorted by
+ * calls-descending by getPresalesBreakdown itself.
+ */
+/**
+ * Pure aggregation, extracted so the "totals equal the sum of the agent
+ * rows" invariant can be unit-tested directly without a live DB — same
+ * pattern as vhAggregatePending above.
+ */
+export function sumBreakdownRows(rows: PresalesAgentBreakdownRow[]): { calls: number; qualified: number } {
+  return {
+    calls: rows.reduce((s, r) => s + r.calls, 0),
+    qualified: rows.reduce((s, r) => s + r.qualified, 0),
+  };
+}
+
+/**
+ * Exported (rather than kept module-private) so the admin-only permission
+ * gate can be unit-tested directly: canViewTeamMetrics(session) is
+ * checked and returned on before getPresalesBreakdown() is ever called,
+ * so calling this with a non-admin session never touches the database —
+ * see phase-b2-units.test.ts.
+ */
+export async function presalesAgentBreakdown(session: ShifuSession, range: DateRange, rangeWords: string): Promise<DeterministicResult> {
+  if (!canViewTeamMetrics(session)) return permissionDenied('Per-agent Pre-Sales breakdowns are only available to Admin.');
+  const breakdown = await getPresalesBreakdown(range);
+  const rows: PresalesAgentBreakdownRow[] = breakdown.map((r) => ({
+    userId: r.userId,
+    name: r.name,
+    calls: r.period.callsInRange,
+    qualified: r.period.qualifiedInRange,
+  }));
+  const totals = sumBreakdownRows(rows);
+  const text = rows.length
+    ? [
+        `Pre-Sales agent breakdown, ${rangeWords}:`,
+        ...rows.map((r) => `${r.name} — ${r.calls} call${r.calls === 1 ? '' : 's'} | ${r.qualified} qualified`),
+        `Total — ${totals.calls} call${totals.calls === 1 ? '' : 's'} | ${totals.qualified} qualified`,
+      ].join('\n')
+    : `No Pre-Sales agent activity recorded for ${rangeWords}.`;
+  return {
+    text,
+    facts: { rows, totals, range: rangeWords },
+    source: 'verified_crm',
+    subject: { type: 'role', role: 'presales_agent' },
+    rows,
+    totals,
+  };
+}
+
 async function teamPerformance(session: ShifuSession, range: DateRange, rangeWords: string): Promise<DeterministicResult> {
   if (!canViewTeamMetrics(session)) return permissionDenied('A team/org overview is only available to Admin.');
   const view = await getOrgSummary(range);
@@ -534,10 +607,11 @@ export async function buildDeterministicAnswer(
   intent: Intent,
   entities: Entities,
   rangeLabel: RangeLabel,
-  rawMessage: string
+  rawMessage: string,
+  explicitDate?: string
 ): Promise<DeterministicResult> {
-  const range = resolveRange(rangeLabel);
-  const rangeWords = rangeLabelToWords(rangeLabel);
+  const range = resolveRange(rangeLabel, explicitDate);
+  const rangeWords = rangeLabelToWords(rangeLabel, explicitDate);
 
   switch (intent) {
     case 'MY_CALLS':
@@ -575,6 +649,8 @@ export async function buildDeterministicAnswer(
       return teamPerformance(session, range, rangeWords);
     case 'TEAM_ATTENTION':
       return teamAttention(session, rangeLabel);
+    case 'PRESALES_AGENT_BREAKDOWN':
+      return presalesAgentBreakdown(session, range, rangeWords);
     case 'PIPELINE_STATUS':
       return pipelineStatus(session, range, rangeLabel);
     case 'LEADERBOARD':
