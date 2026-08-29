@@ -6,6 +6,7 @@ import { AGENT_EDITABLE_FIELDS, COUNSELLOR_EDITABLE_FIELDS } from '@/lib/masters
 import {
   computeTotalAttempts,
   computeQualificationStatus,
+  computeQualifiedAt,
   computePipelineStatus,
   computeHandoverStatus,
   computeNextFollowup,
@@ -172,9 +173,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     allowedKeys.add('ownerUserId');
     allowedKeys.add('assignedVhUserId');
     allowedKeys.add('assignedCounsellorUserId');
+    // Aug 2026 data-quality fix: Language was never editable by anyone
+    // after a lead was created — full-import/upload accept a blank
+    // Language with no validation (see those routes' comments), so
+    // leads could reach Qualified with no Language on record and there
+    // was no way to correct it. Admin and Data Team (the two roles that
+    // already do data corrections — see ownerUserId above) can now fix it.
+    allowedKeys.add('language');
   }
   if (isDataTeam) {
     allowedKeys.add('ownerUserId');
+    allowedKeys.add('language');
   }
   if (isOwnerAgent) {
     AGENT_EDITABLE_FIELDS.forEach((k) => allowedKeys.add(k));
@@ -224,6 +233,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const state = ((body.state !== undefined ? body.state : existing.state) || null) as string | null;
   const profession = ((body.profession !== undefined ? body.profession : existing.profession) || null) as string | null;
   const purpose = ((body.purpose !== undefined ? body.purpose : existing.purpose) || null) as string | null;
+  // Aug 2026 data-quality fix: language is now correctable by Admin/Data
+  // Team (see allowedKeys above) — same optional-field pattern as
+  // state/profession/purpose. Trimmed so a whitespace-only value doesn't
+  // silently pass validation-that-doesn't-exist and look populated.
+  const language = ((body.language !== undefined ? String(body.language).trim() : existing.language) || null) as string | null;
   const finalOutcome = ((body.finalOutcome !== undefined ? body.finalOutcome : existing.finalOutcome) || null) as string | null;
   const notes = body.remarks !== undefined ? String(body.remarks) : (existing.notes as string) || '';
   const courseStartTimeline = ((body.courseStartTimeline !== undefined ? body.courseStartTimeline : existing.courseStartTimeline) || null) as string | null;
@@ -244,14 +258,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const pipelineStatus = computePipelineStatus(totalAttempts, qualificationStatus);
 
   // ---- First-transition timestamps, for funnel/leakage timing analysis ----
-  // (Team Performance / Qualified Dashboard "Avg Days X to Y" metrics.) Each
-  // is stamped once, the first time the lead crosses into that state, and
-  // never overwritten afterwards — same pattern as admissionTimestamp below.
+  // (Team Performance / Qualified Dashboard "Avg Days X to Y" metrics, and
+  // Shifu's LATEST_QUALIFICATION/DAILY_QUALIFICATION_COUNT.) Extracted to
+  // lib/leadLogic.ts's computeQualifiedAt() (Aug 2026 diagnostic pass) so
+  // this logic is independently unit-tested — see that function's doc
+  // comment for the confirmed V1 semantic (re-stamps on each
+  // requalification, untouched on any other save).
   const wasQualified = existing.qualificationStatus === 'Qualified';
-  const qualifiedAt =
-    !wasQualified && qualificationStatus === 'Qualified'
-      ? nowUtc.toISOString()
-      : (existing.qualifiedAt as string | null);
+  const qualifiedAt = computeQualifiedAt(wasQualified, qualificationStatus, nowUtc.toISOString(), (existing.qualifiedAt as string | null));
   const vhAssignedAt =
     !assignedVhUserId0 && assignedVhUserId
       ? nowUtc.toISOString()
@@ -441,7 +455,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     ['attempt7_status', attemptStatuses[6]], ['attempt7_date', attemptDates[6]], ['attempt7_time', attemptTimes[6]],
     ['attempt8_status', attemptStatuses[7]], ['attempt8_date', attemptDates[7]], ['attempt8_time', attemptTimes[7]],
     ['attempt9_status', attemptStatuses[8]], ['attempt9_date', attemptDates[8]], ['attempt9_time', attemptTimes[8]],
-    ['state', state], ['profession', profession], ['purpose', purpose],
+    ['state', state], ['profession', profession], ['purpose', purpose], ['language', language],
     ['total_attempts', totalAttempts], ['final_outcome', finalOutcome], ['qualification_status', qualificationStatus],
     ['next_followup_date', nextFollowupDate], ['next_followup_time', nextFollowupTime], ['notes', notes],
     ['course_start_timeline', courseStartTimeline], ['meeting_date', meetingDate], ['meeting_time', meetingTime],

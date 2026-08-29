@@ -112,6 +112,7 @@ export default function LeadDetailClient({
     f.state = data.lead.state || '';
     f.profession = data.lead.profession || '';
     f.purpose = data.lead.purpose || '';
+    f.language = data.lead.language || '';
     f.finalOutcome = data.lead.finalOutcome || '';
     f.remarks = data.lead.notes || '';
     f.courseStartTimeline = data.lead.courseStartTimeline || '';
@@ -198,6 +199,7 @@ export default function LeadDetailClient({
   const isAssignedVh = role === 'vertical_head' && lead.assignedVhUserId === selfUserId;
   const isAssignedCounsellor = role === 'sales_counsellor' && lead.assignedCounsellorUserId === selfUserId;
   const isAdmin = role === 'admin';
+  const isDataTeam = role === 'data_team';
 
   const canEditAgentFields = isAdmin || isOwnerAgent;
   const canAssignVh = isAdmin;
@@ -210,9 +212,15 @@ export default function LeadDetailClient({
   const canEditTrial = isAdmin || isAssignedCounsellor;
   const canEditAdmission = isAdmin || isAssignedCounsellor;
   const canEditReminderCalls = isAdmin || isAssignedCounsellor || isOwnerAgent;
+  // Aug 2026 data-quality fix: Language was never editable by anyone —
+  // full-import/upload accept a blank value with no validation, so
+  // leads could reach Qualified with no Language on record and there was
+  // no way to correct it afterward. Admin and Data Team only, matching
+  // the server-side allowedKeys gate in app/api/leads/[id]/route.ts.
+  const canEditLanguage = isAdmin || isDataTeam;
   const canEditAnything =
     canEditAgentFields || canAssignVh || canAssignCounsellor || canEditCounsellorUpdate ||
-    canEditConnecting || canEditNextMeeting || canEditTrial || canEditAdmission || canEditReminderCalls;
+    canEditConnecting || canEditNextMeeting || canEditTrial || canEditAdmission || canEditReminderCalls || canEditLanguage;
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -239,6 +247,9 @@ export default function LeadDetailClient({
       patch.preferredMode = form.preferredMode || null;
       patch.nextFollowupDate = form.nextFollowupDate || null;
       patch.nextFollowupTime = form.nextFollowupTime || null;
+    }
+    if (canEditLanguage) {
+      patch.language = form.language || null;
     }
     if (canAssignVh) {
       patch.assignedVhUserId = form.assignedVhUserId ? Number(form.assignedVhUserId) : null;
@@ -319,7 +330,11 @@ export default function LeadDetailClient({
           <Field label="Mobile" value={lead.mobile} />
           <Field label="Email" value={lead.email} />
           <Field label="Source" value={lead.source} />
-          <Field label="Language" value={lead.language} />
+          {canEditLanguage ? (
+            <TextField label="Language" value={form.language} onChange={(v) => set('language', v)} disabled={false} />
+          ) : (
+            <Field label="Language" value={lead.language} />
+          )}
           <Field label="Assigned Date" value={formatDate(lead.assignedDate)} />
           <div>
             <div style={labelStyle}>Qualification Status</div>
@@ -564,6 +579,15 @@ function SelectUsersField({
         <option value="">Unassigned</option>
         {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
+    </label>
+  );
+}
+
+function TextField({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled: boolean }) {
+  return (
+    <label>
+      <div style={labelStyle}>{label}</div>
+      <input type="text" value={value || ''} onChange={(e) => onChange(e.target.value)} disabled={disabled} style={inputStyle} />
     </label>
   );
 }
