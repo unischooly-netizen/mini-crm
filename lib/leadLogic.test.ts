@@ -12,7 +12,7 @@
 // (No DATABASE_URL needed — this file only imports pure functions from
 // lib/leadLogic.ts, which has no DB dependency at all.)
 
-import { computeQualifiedAt } from './leadLogic';
+import { computeQualifiedAt, computePipelineStatus } from './leadLogic';
 
 let pass = 0;
 let fail = 0;
@@ -104,6 +104,42 @@ check(
 check(
   'un-qualifying a lead (was Qualified, now Not Qualified) leaves the existing qualified_at value untouched, not cleared',
   computeQualifiedAt(true, 'Not Qualified', T2, T1) === T1
+);
+
+// ---------------------------------------------------------------------------
+// computePipelineStatus — Aug 2026 "stuck in New" bug fix regression tests.
+// A decisive qualification outcome must always win the lead's pipeline
+// tab/bucket, regardless of in-system attempt count. See the function's
+// doc comment in lib/leadLogic.ts for the full root-cause explanation.
+// ---------------------------------------------------------------------------
+
+check(
+  'a never-touched lead (0 attempts, Not Reviewed) is New',
+  computePipelineStatus(0, 'Not Reviewed') === 'New'
+);
+check(
+  'a lead with attempts logged but not yet reviewed (Not Reviewed) is Not Picked',
+  computePipelineStatus(3, 'Not Reviewed') === 'Not Picked'
+);
+check(
+  'THE BUG: an imported lead that is already Qualified with 0 in-system attempts must show as Qualified, not New',
+  computePipelineStatus(0, 'Qualified') === 'Qualified'
+);
+check(
+  'an imported lead that is already Not Qualified with 0 in-system attempts must show as Not Qualified, not New',
+  computePipelineStatus(0, 'Not Qualified') === 'Not Qualified'
+);
+check(
+  'an imported lead that is already Follow-up Needed with 0 in-system attempts must show as Follow-up Needed, not New',
+  computePipelineStatus(0, 'Follow-up Needed') === 'Follow-up Needed'
+);
+check(
+  'a normally-worked Qualified lead (attempts > 0) still shows as Qualified (unaffected by the fix)',
+  computePipelineStatus(5, 'Qualified') === 'Qualified'
+);
+check(
+  'a normally-worked Not Qualified lead (attempts > 0) still shows as Not Qualified (unaffected by the fix)',
+  computePipelineStatus(2, 'Not Qualified') === 'Not Qualified'
 );
 
 const summary = pass + fail;
